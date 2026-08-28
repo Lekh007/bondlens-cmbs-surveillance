@@ -45,7 +45,11 @@ def test_live_external_calls_default_off() -> None:
     assert settings.external_network_enabled is False
 
 
-def test_model_provider_defaults_to_ollama() -> None:
+def test_model_provider_defaults_to_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The repo-wide conftest forces MODEL_PROVIDER=deterministic for the
+    # whole test session (Task 12) - this test verifies the actual class
+    # default beneath that override, so it must clear the env var itself.
+    monkeypatch.delenv("MODEL_PROVIDER", raising=False)
     settings = _settings()
     assert settings.model_provider == "ollama"
 
