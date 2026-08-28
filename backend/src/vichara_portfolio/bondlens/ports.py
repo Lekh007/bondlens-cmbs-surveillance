@@ -5,6 +5,7 @@ or FAISS.
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
 from typing import TYPE_CHECKING, Protocol
 
 from vichara_portfolio.bondlens.domain import Deal, ParsedAssetData, SecFiling, SubmissionsResult
@@ -49,6 +50,16 @@ class RepositoryPort(Protocol):
     def save_parsed_asset_data(
         self, *, accession_number: str, parsed: ParsedAssetData, source_document_id: int | None
     ) -> tuple[int, int]: ...
+
+    def savepoint(self) -> AbstractContextManager[None]:
+        """One atomic unit of work. Real implementations wrap a DB
+        SAVEPOINT so a failure partway through one filing's writes (in a
+        multi-filing ingest sharing one session/transaction) rolls back
+        only that filing, not every filing already committed in this run -
+        Postgres otherwise poisons the whole transaction until an explicit
+        rollback (measured 2026-08-28: a mid-loop failure cascaded
+        PendingRollbackError onto every subsequent filing)."""
+        ...
 
 
 class VectorIndexPort(Protocol):

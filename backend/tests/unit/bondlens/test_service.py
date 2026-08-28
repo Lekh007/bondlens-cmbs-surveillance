@@ -1,4 +1,5 @@
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -97,6 +98,10 @@ class FakeRepository:
         self.saved.append((accession_number, parsed))
         return len(parsed.loans), sum(len(loan.properties) for loan in parsed.loans)
 
+    @contextmanager
+    def savepoint(self):
+        yield
+
 
 def _fake_parse(xml_bytes: bytes, source: SourceRef) -> ParsedAssetData:
     return ParsedAssetData(loans=(), issues=())
@@ -181,6 +186,63 @@ def test_one_failure_does_not_stop_ingestion_of_the_rest() -> None:
     assert summary.created_count == 1
 
 
+@dataclass
+class PoisonableRepository:
+    """Simulates a shared DB session/transaction: once a write raises, the
+    session is 'poisoned' and every subsequent write also raises - unless
+    something rolls it back to a savepoint first, the way a real Postgres
+    session requires. Regression test for a real bug (2026-08-28): without
+    _ingest_one_filing wrapping its writes in repository.savepoint(), one
+    bad filing poisoned every filing after it in the same ingest_deal run."""
+
+    fail_for_accession: str | None = None
+    saved: list[str] = field(default_factory=list)
+    _poisoned: bool = False
+
+    def upsert_deal(self, deal: Deal) -> None:
+        pass
+
+    def upsert_filing(self, filing: SecFiling) -> None:
+        pass
+
+    def upsert_source_document(self, source: SourceRef) -> int:
+        return 1
+
+    def save_parsed_asset_data(self, *, accession_number, parsed, source_document_id):
+        if self._poisoned:
+            raise RuntimeError("session is poisoned - needs a rollback before further writes")
+        if accession_number == self.fail_for_accession:
+            self._poisoned = True
+            raise ValueError(f"simulated DB failure for {accession_number}")
+        self.saved.append(accession_number)
+        return len(parsed.loans), 0
+
+    @contextmanager
+    def savepoint(self):
+        try:
+            yield
+        except Exception:
+            self._poisoned = False  # a real ROLLBACK TO SAVEPOINT clears this
+            raise
+
+
+def test_one_filings_db_failure_does_not_poison_the_rest_of_the_ingest() -> None:
+    sec = FakeSecEdgar((_filing("acc-good-1"), _filing("acc-bad"), _filing("acc-good-2")))
+    filing_store = FakeFilingStore(
+        documents_by_accession={
+            accession: (FilingDocument("EX-102", "exh_102.xml", "https://x"),)
+            for accession in ("acc-good-1", "acc-bad", "acc-good-2")
+        }
+    )
+    repo = PoisonableRepository(fail_for_accession="acc-bad")
+
+    summary = _service(sec, filing_store, repo).ingest_deal("0002110410")
+
+    assert summary.created_count == 2
+    assert summary.failed_count == 1
+    assert repo.saved == ["acc-good-1", "acc-good-2"]
+
+
 def test_successful_ingest_persists_source_document_and_asset_data() -> None:
     sec = FakeSecEdgar((_filing("acc-1"),))
     filing_store = FakeFilingStore(
@@ -194,6 +256,57 @@ def test_successful_ingest_persists_source_document_and_asset_data() -> None:
     assert len(repo.source_documents) == 1
     assert len(repo.saved) == 1
     assert repo.saved[0][0] == "acc-1"
+    assert len(repo.filings) == 1
+    assert repo.filings[0].accession_number == "acc-1"
+
+
+@dataclass
+class FkEnforcingRepository:
+    """Simulates the real Postgres FK: cmbs_reporting_periods.accession_number
+    references cmbs_filings.accession_number, so save_parsed_asset_data must
+    fail unless upsert_filing already wrote that accession. Regression test
+    for a real bug (2026-08-28, live SEC/Postgres run): _ingest_one_filing
+    never called repository.upsert_filing, so every filing failed with
+    psycopg.errors.ForeignKeyViolation on cmbs_reporting_periods - invisible
+    to the plain FakeRepository above because it has no FK to enforce."""
+
+    known_accessions: set[str] = field(default_factory=set)
+    saved: list[str] = field(default_factory=list)
+
+    def upsert_deal(self, deal: Deal) -> None:
+        pass
+
+    def upsert_filing(self, filing) -> None:
+        self.known_accessions.add(filing.accession_number)
+
+    def upsert_source_document(self, source: SourceRef) -> int:
+        return 1
+
+    def save_parsed_asset_data(self, *, accession_number, parsed, source_document_id):
+        if accession_number not in self.known_accessions:
+            raise RuntimeError(
+                f"ForeignKeyViolation: {accession_number} not present in cmbs_filings"
+            )
+        self.saved.append(accession_number)
+        return len(parsed.loans), 0
+
+    @contextmanager
+    def savepoint(self):
+        yield
+
+
+def test_ingest_deal_upserts_the_filing_before_saving_its_asset_data() -> None:
+    sec = FakeSecEdgar((_filing("acc-1"),))
+    filing_store = FakeFilingStore(
+        documents_by_accession={"acc-1": (FilingDocument("EX-102", "exh_102.xml", "https://x"),)}
+    )
+    repo = FkEnforcingRepository()
+
+    summary = _service(sec, filing_store, repo).ingest_deal("0002110410")
+
+    assert summary.created_count == 1
+    assert summary.failed_count == 0
+    assert repo.saved == ["acc-1"]
 
 
 def test_ingestion_is_idempotent_at_the_service_level_two_runs_same_counts() -> None:

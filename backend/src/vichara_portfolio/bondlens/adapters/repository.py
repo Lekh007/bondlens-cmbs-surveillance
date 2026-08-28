@@ -13,6 +13,8 @@ a plain select-then-insert, since not every SourceRef has a checksum
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -190,6 +192,11 @@ class AuditEventRow(Base):
 class BondLensRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
+
+    @contextmanager
+    def savepoint(self) -> Iterator[None]:
+        with self._session.begin_nested():
+            yield
 
     def upsert_source_document(self, source: SourceRef) -> int:
         if source.checksum is not None:
