@@ -63,6 +63,7 @@ pythonpath = ["src"]
 asyncio_mode = "auto"
 markers = [
     "live: hits a real external network dependency (SEC, Ollama); excluded by default",
+    "integration: needs a real service (Postgres, Redis); skips itself if unreachable",
 ]
 addopts = "-m 'not live'"
 

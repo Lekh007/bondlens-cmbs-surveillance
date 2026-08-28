@@ -1,0 +1,45 @@
+name: vichara-genai-portfolio
+
+# Task 9 scope: only the database dependencies needed to develop against
+# natively-run backend code. Task 29 completes this file with api, worker,
+# web, n8n, mlflow, prometheus, and grafana services, and adds
+# host.docker.internal wiring for the containerized path to reach Ollama.
+#
+# postgres and redis use named volumes, not bind mounts to a Windows path -
+# PGDATA on a bind-mounted /mnt/d-style path under WSL2 Docker Desktop fails
+# on ownership and fsync semantics (design doc, Task 9 callout).
+#
+# Host ports 5433/6380, not the 5432/6379 defaults: this machine already
+# runs lekh-trosky-postgres-1 and lekh-trosky-redis-1 (a separate project)
+# bound to the standard ports. Settings.database_url/redis_url match these.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vichara
+      POSTGRES_PASSWORD: vichara
+      POSTGRES_DB: vichara
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/docker/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vichara"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:

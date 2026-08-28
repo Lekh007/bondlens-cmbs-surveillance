@@ -33,8 +33,11 @@ class Settings(BaseSettings):
     faiss_root: Path = _DEFAULT_DATA_ROOT / "faiss"
     mlflow_root: Path = _DEFAULT_DATA_ROOT / "mlflow"
 
-    database_url: str = "postgresql+psycopg://vichara:vichara@localhost:5432/vichara"
-    redis_url: str = "redis://localhost:6379/0"
+    # Ports 5433/6380, not the 5432/6379 defaults - this machine already runs
+    # a separate project's postgres/redis containers on the standard ports.
+    # See compose.yaml.
+    database_url: str = "postgresql+psycopg://vichara:vichara@localhost:5433/vichara"
+    redis_url: str = "redis://localhost:6380/0"
 
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "llama3.1:8b"
