@@ -129,6 +129,7 @@ def test_ollama_generate_sends_temperature_and_num_ctx(ollama: OllamaProvider) -
     body = _json.loads(sent)
     assert body["options"]["temperature"] == 0.0
     assert body["options"]["num_ctx"] == 4096
+    assert body["options"]["num_predict"] == 400
 
 
 @respx.mock

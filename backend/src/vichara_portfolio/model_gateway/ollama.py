@@ -37,6 +37,12 @@ T = TypeVar("T", bound=BaseModel)
 DEFAULT_BASE_URL = "http://127.0.0.1:11434"
 DEFAULT_MODEL = "llama3.1:8b"
 DEFAULT_NUM_CTX = 4096
+# Real finding (2026-08-28): with no cap, a temperature-0 llama3.1:8b
+# response to an open-ended analyst prompt kept generating past 344
+# tokens without naturally stopping, at ~13 tok/s - slow and needlessly
+# long for a surveillance answer. Capped rather than just raising the
+# client timeout, since an analyst answer should be concise regardless.
+DEFAULT_NUM_PREDICT = 400
 
 
 class OllamaProvider:
@@ -46,11 +52,13 @@ class OllamaProvider:
         base_url: str = DEFAULT_BASE_URL,
         model: str = DEFAULT_MODEL,
         num_ctx: int = DEFAULT_NUM_CTX,
+        num_predict: int = DEFAULT_NUM_PREDICT,
         client: httpx.Client | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._num_ctx = num_ctx
+        self._num_predict = num_predict
         self._client = client or httpx.Client(base_url=self._base_url)
         # One concurrent generation - see module docstring. A single
         # process-local lock is sufficient because this provider is meant
@@ -78,7 +86,11 @@ class OllamaProvider:
                 "model": self._model,
                 "prompt": prompt,
                 "stream": False,
-                "options": {"temperature": temperature, "num_ctx": self._num_ctx},
+                "options": {
+                    "temperature": temperature,
+                    "num_ctx": self._num_ctx,
+                    "num_predict": self._num_predict,
+                },
             },
             timeout_seconds=timeout_seconds,
         )
@@ -102,7 +114,11 @@ class OllamaProvider:
                 "prompt": prompt,
                 "stream": False,
                 "format": schema.model_json_schema(),
-                "options": {"temperature": temperature, "num_ctx": self._num_ctx},
+                "options": {
+                    "temperature": temperature,
+                    "num_ctx": self._num_ctx,
+                    "num_predict": self._num_predict,
+                },
             },
             timeout_seconds=timeout_seconds,
         )

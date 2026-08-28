@@ -1,0 +1,54 @@
+# Golden questions for BondLens G1 evaluation (Task 17 reuses these).
+# Ground truth pinned from the 2026-08-28 data spike against the real
+# May and July 2026 Benchmark 2026-B42 ABS-EE filings.
+
+- id: flagship-status-and-balance
+  question: >-
+    Which loans changed payment status between May and July, and whose
+    balances diverged from schedule?
+  expected_tools: [rank_loans_by_status_change, rank_loans_by_balance_drift]
+  expected_facts:
+    - "loan 30"
+    - "Cummins Station"
+    - "0"
+    - "B"
+
+- id: cured-loans
+  question: "Which loans were cured (delinquent then current) between May and July?"
+  expected_tools: [rank_loans_by_status_change]
+  expected_facts:
+    - "loan 16"
+    - "loan 39"
+    - "PWC Pennant"
+    - "325 East 14th Street"
+
+- id: deal-summary
+  question: "Give me a deal summary for Benchmark 2026-B42 as of July."
+  expected_tools: [get_deal_summary]
+  expected_facts:
+    - "62"
+    - "123"
+
+- id: loan-30-history
+  question: "What is the payment history of loan 30 across the periods you have?"
+  expected_tools: [get_loan_history]
+  expected_facts:
+    - "0"
+    - "B"
+
+- id: property-noi-honest-negative
+  question: >-
+    Which properties deteriorated most in net operating income between
+    May and July?
+  expected_tools: [rank_properties_by_noi_change]
+  # Loosened after a real run: the model correctly paraphrased the honest
+  # negative result ("no properties deteriorated ... no genuine NOI changes
+  # were recorded") rather than echoing the tool's exact reason string.
+  # These fragments are robust to that kind of faithful rewording while
+  # still requiring the substantive claim.
+  expected_facts:
+    - "no genuine noi"
+    - "deteriorat"
+  # This is the flagship negative case (design.md section 0): the correct
+  # answer is that there is no property-level deterioration on this deal
+  # in this window, not a fabricated ranking.
