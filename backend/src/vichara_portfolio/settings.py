@@ -42,7 +42,10 @@ class Settings(BaseSettings):
 
     sec_user_agent: str = Field(
         ...,
-        description="Declared User-Agent for data.sec.gov, e.g. 'App/0.1 (contact@example.com)'. Not a secret.",
+        description=(
+            "Declared User-Agent for data.sec.gov, e.g. 'App/0.1 (contact@example.com)'. "
+            "Not a secret."
+        ),
     )
     jwt_secret: str = Field(..., repr=False)
 

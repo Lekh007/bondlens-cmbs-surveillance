@@ -15,13 +15,13 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 MIN_PYTHON_VERSION = (3, 12)
 
 
-class Status(str, Enum):
+class Status(StrEnum):
     READY = "ready"
     DEGRADED = "degraded"
     MISSING = "missing"
@@ -79,7 +79,8 @@ def _evaluate_python(probe: RuntimeProbe) -> CapabilityStatus:
     if (major, minor) >= MIN_PYTHON_VERSION:
         detail = f"{major}.{minor}.{probe.python_version[2]} at {probe.python_executable}"
         return CapabilityStatus("python", Status.READY, detail, required=True)
-    detail = f"{major}.{minor}.{probe.python_version[2]} < {'.'.join(map(str, MIN_PYTHON_VERSION))} required"
+    min_str = ".".join(map(str, MIN_PYTHON_VERSION))
+    detail = f"{major}.{minor}.{probe.python_version[2]} < {min_str} required"
     return CapabilityStatus("python", Status.MISSING, detail, required=True)
 
 
@@ -106,7 +107,8 @@ def _evaluate_gpu(probe: RuntimeProbe) -> CapabilityStatus:
 def _evaluate_docker(probe: RuntimeProbe) -> CapabilityStatus:
     if probe.docker_reachable:
         return CapabilityStatus("docker", Status.READY, "docker info succeeded", required=False)
-    return CapabilityStatus("docker", Status.MISSING, "docker info failed or timed out", required=False)
+    detail = "docker info failed or timed out"
+    return CapabilityStatus("docker", Status.MISSING, detail, required=False)
 
 
 def _evaluate_ollama(probe: RuntimeProbe) -> CapabilityStatus:
