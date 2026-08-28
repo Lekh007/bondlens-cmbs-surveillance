@@ -8,9 +8,9 @@ interface Props {
 export function ChatLauncher({ onClick, hidden }: Props) {
   if (hidden) return null;
   return (
-    <button className="chat-launcher" onClick={onClick} aria-label="Open Bond Viewer AI">
+    <button className="chat-launcher" onClick={onClick} aria-label="Open BondLens analyst">
       <Sparkles size={16} strokeWidth={2} />
-      Ask Bond Viewer AI
+      Ask BondLens
     </button>
   );
 }

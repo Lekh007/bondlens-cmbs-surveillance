@@ -1,33 +1,34 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, ChevronRight } from 'lucide-react'
+import { CheckCircle2 } from 'lucide-react'
 
 import '@/features/bondlens/bondlens.css'
 
 import { TopBar } from '@/features/bondlens/components/TopBar'
 import { TabBar } from '@/features/bondlens/components/TabBar'
 import { Sidebar } from '@/features/bondlens/components/Sidebar'
+import { DealSelector } from '@/features/bondlens/components/DealSelector'
+import { PeriodComparison } from '@/features/bondlens/components/PeriodComparison'
 
 import { KpiHero } from '@/features/bondlens/components/sections/KpiHero'
-import { DealOverview } from '@/features/bondlens/components/sections/DealOverview'
-import { ScenarioAnalysis } from '@/features/bondlens/components/sections/ScenarioAnalysis'
-import { BondsTable } from '@/features/bondlens/components/sections/BondsTable'
 import { FocusDelinquency } from '@/features/bondlens/components/sections/FocusDelinquency'
 import { PropertyTypeDistribution } from '@/features/bondlens/components/sections/PropertyTypeDistribution'
 import { Geography } from '@/features/bondlens/components/sections/Geography'
 import { BalanceMaturityLosses } from '@/features/bondlens/components/sections/BalanceMaturityLosses'
-import { LeaseRollover } from '@/features/bondlens/components/sections/LeaseRollover'
-import { ServicerCommentary } from '@/features/bondlens/components/sections/ServicerCommentary'
 
 import { ChatLauncher } from '@/features/bondlens/components/chat/ChatLauncher'
 import { ChatPanel } from '@/features/bondlens/components/chat/ChatPanel'
 
+import {
+  useBalanceDrift,
+  useDealCompare,
+  useDealSummary,
+  useGeography,
+  usePropertyTypes,
+  useStatusChanges,
+} from '@/features/bondlens/hooks'
+
 type Density = 'comfy' | 'compact'
 
-// This is the reference wireframe shell copied mechanically from
-// wiki/analyses/vichara-cmbs-react (Task 15 Step 1) and adapted only to fit
-// the router/providers scaffold. It is still fixture-driven - real BondLens
-// API wiring (deal summary, period comparison, cited chat) replaces the
-// static deal.ts data and canned chat responses in Task 16.
 export function BondLensPage() {
   const [density, setDensity] = useState<Density>(() => {
     try {
@@ -38,6 +39,7 @@ export function BondLensPage() {
   })
   const [chatOpen, setChatOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  const [selectedDealId, setSelectedDealId] = useState<string | null>(null)
 
   useEffect(() => {
     document.documentElement.classList.toggle('compact', density === 'compact')
@@ -54,15 +56,22 @@ export function BondLensPage() {
     return () => clearTimeout(t)
   }, [toast])
 
-  const showToast = (msg: string) => setToast(msg)
+  const summaryQuery = useDealSummary(selectedDealId)
+  const compareQuery = useDealCompare(selectedDealId)
+  const geographyQuery = useGeography(selectedDealId)
+  const propertyTypesQuery = usePropertyTypes(selectedDealId)
+  const statusChangesQuery = useStatusChanges(selectedDealId)
+  const balanceDriftQuery = useBalanceDrift(selectedDealId)
+
+  const dealName = summaryQuery.data?.name ?? ''
 
   return (
     <>
       <TopBar
         density={density}
         onDensityChange={setDensity}
-        onRunJob={(n) => showToast(`${n} run started · wireframe demo`)}
-        onExport={() => showToast('Export started — Excel')}
+        onExport={() => setToast('Export started — Excel')}
+        dealSelector={<DealSelector selectedDealId={selectedDealId} onSelect={setSelectedDealId} />}
       />
       <TabBar />
 
@@ -70,53 +79,66 @@ export function BondLensPage() {
         <Sidebar />
 
         <main className="flex-1 px-8 py-6 max-w-[1440px] mx-auto space-y-6" style={{ width: 0 }}>
-          <div className="flex items-end justify-between">
-            <div>
-              <div className="flex items-center gap-1.5 text-[12px] text-text-md mb-1">
-                <span>Deals</span>
-                <ChevronRight size={12} strokeWidth={1.8} />
-                <span>Conduit</span>
-                <ChevronRight size={12} strokeWidth={1.8} />
-                <span className="text-text-hi font-medium">MSC 2019-L3</span>
-              </div>
-              <h1 className="text-[22px] font-semibold tracking-tight text-text-hi">
-                Underwriting Information for MSC&nbsp;2019-L3
-              </h1>
-              <div className="text-[13px] text-text-md mt-0.5">
-                51 loans &middot; $960.3M outstanding &middot; Conduit &middot; Wells Fargo Bank
-                (MS) &middot; Wilmington Trust (Trustee)
-              </div>
+          {!selectedDealId && (
+            <div className="card p-6 text-center text-[13px] text-text-md">
+              Select or ingest a deal above to see BondLens surveillance data.
             </div>
-            <div className="text-right text-[12px] text-text-md">
-              <div>
-                Auto-UW completed <span className="text-text-hi font-medium">5/3/2024 10:50 PM</span>
-              </div>
-              <div>
-                Intex update <span className="text-text-hi font-medium">5/1/2026</span>
-              </div>
+          )}
+
+          {selectedDealId && summaryQuery.isPending && (
+            <div className="card p-6 text-center text-[13px] text-text-md">Loading deal summary…</div>
+          )}
+
+          {selectedDealId && summaryQuery.isError && (
+            <div className="card p-6 text-center text-[13px] text-loss">
+              This deal has been ingested but has no loan data yet.
             </div>
-          </div>
+          )}
 
-          <KpiHero />
-          <DealOverview />
-          <ScenarioAnalysis />
-          <BondsTable />
-          <FocusDelinquency />
-          <PropertyTypeDistribution />
-          <Geography />
-          <BalanceMaturityLosses />
-          <LeaseRollover />
-          <ServicerCommentary />
+          {selectedDealId && summaryQuery.data && (
+            <>
+              <div>
+                <h1 className="text-[22px] font-semibold tracking-tight text-text-hi">
+                  {summaryQuery.data.name}
+                </h1>
+                <div className="text-[13px] text-text-md mt-0.5">
+                  CIK {summaryQuery.data.cik} · loan-level CMBS ABS-EE surveillance
+                </div>
+              </div>
 
-          <footer className="text-[11px] text-text-lo text-center pb-8 pt-2">
-            Vichara Bond Viewer &middot; MSC 2019-L3 &middot; Wireframe prototype &middot; Data as
-            of 5/3/2024
-          </footer>
+              <KpiHero summary={summaryQuery.data} />
+
+              <PeriodComparison compare={compareQuery.data ?? null} isLoading={compareQuery.isPending} />
+
+              <FocusDelinquency ranking={statusChangesQuery.data ?? null} />
+
+              {balanceDriftQuery.data && <BalanceMaturityLosses ranking={balanceDriftQuery.data} />}
+
+              <div className="grid grid-cols-2 gap-6">
+                {propertyTypesQuery.data && (
+                  <PropertyTypeDistribution distribution={propertyTypesQuery.data} />
+                )}
+                {geographyQuery.data && <Geography distribution={geographyQuery.data} />}
+              </div>
+
+              <footer className="text-[11px] text-text-lo text-center pb-8 pt-2">
+                BondLens · {summaryQuery.data.name} · source: SEC EDGAR ABS-EE ·{' '}
+                <a href={summaryQuery.data.source_url} target="_blank" rel="noreferrer" className="link">
+                  view latest filing
+                </a>
+              </footer>
+            </>
+          )}
         </main>
       </div>
 
       <ChatLauncher onClick={() => setChatOpen(true)} hidden={chatOpen} />
-      <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
+      <ChatPanel
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        dealId={selectedDealId}
+        dealName={dealName}
+      />
 
       {toast && (
         <div className="toast">

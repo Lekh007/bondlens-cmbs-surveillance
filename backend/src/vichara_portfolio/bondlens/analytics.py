@@ -16,6 +16,7 @@ this deal are null-to-first-reported-value, not deterioration).
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
@@ -421,5 +422,94 @@ def rank_properties_by_noi_change(
         entries=tuple(entries),
         excluded_null_to_value_count=excluded_null_to_value,
         reason=reason,
+        formula_version=FORMULA_VERSION,
+    )
+
+
+# --------------------------------------------------------------------------
+# get_property_type_distribution / get_geography_distribution
+#
+# propertyTypeCode and propertyState are `*AtSecuritization`-equivalent -
+# frozen at issuance and always populated (measured 2026-08-28: 0/123
+# missing on this deal). Type codes are rendered as their raw two-letter
+# SEC ABS-EE codes (e.g. "SS", "MF") rather than expanded to full names -
+# the taxonomy's expansion isn't verified against source data here, so
+# showing the code instead of guessing a label follows the same rule as
+# rank_properties_by_noi_change: don't invent what isn't in the data.
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PropertyTypeEntry:
+    property_type_code: str
+    property_count: int
+
+
+@dataclass(frozen=True)
+class PropertyTypeDistribution:
+    entries: tuple[PropertyTypeEntry, ...]
+    total_properties: int
+    properties_missing_type: int
+    formula_version: str
+
+
+def get_property_type_distribution(loans: tuple[Loan, ...]) -> PropertyTypeDistribution:
+    counts: Counter[str] = Counter()
+    missing = 0
+    total = 0
+    for loan in loans:
+        for prop in loan.properties:
+            total += 1
+            if prop.property_type_code:
+                counts[prop.property_type_code] += 1
+            else:
+                missing += 1
+
+    entries = tuple(
+        PropertyTypeEntry(property_type_code=code, property_count=count)
+        for code, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    )
+    return PropertyTypeDistribution(
+        entries=entries,
+        total_properties=total,
+        properties_missing_type=missing,
+        formula_version=FORMULA_VERSION,
+    )
+
+
+@dataclass(frozen=True)
+class GeographyEntry:
+    state: str
+    property_count: int
+
+
+@dataclass(frozen=True)
+class GeographyDistribution:
+    entries: tuple[GeographyEntry, ...]
+    total_properties: int
+    properties_missing_state: int
+    formula_version: str
+
+
+def get_geography_distribution(loans: tuple[Loan, ...]) -> GeographyDistribution:
+    counts: Counter[str] = Counter()
+    missing = 0
+    total = 0
+    for loan in loans:
+        for prop in loan.properties:
+            total += 1
+            if prop.property_state:
+                counts[prop.property_state] += 1
+            else:
+                missing += 1
+
+    entries = tuple(
+        GeographyEntry(state=state, property_count=count)
+        for state, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    )
+    return GeographyDistribution(
+        entries=entries,
+        total_properties=total,
+        properties_missing_state=missing,
         formula_version=FORMULA_VERSION,
     )

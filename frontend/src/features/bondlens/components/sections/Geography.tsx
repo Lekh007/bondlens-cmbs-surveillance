@@ -1,50 +1,60 @@
-import { Card } from '@/features/bondlens/components/ui/Card';
-import { topStates, topCities } from '@/features/bondlens/data/deal';
-import { fmtNum, fmtPct } from '@/features/bondlens/lib/format';
-import type { GeoRow } from '@/features/bondlens/types';
+import { Card } from '@/features/bondlens/components/ui/Card'
+import type { GeographyDistribution } from '@/features/bondlens/api'
+import { fmtNum, fmtPct } from '@/features/bondlens/lib/format'
 
-export function Geography() {
-  return (
-    <section id="geography" className="grid grid-cols-2 gap-6">
-      <Card title="Top 15 States · Geographic Distribution" subtitle="By balance · NY leads at 15.89%" actions={['export']}>
-        <GeoTable rows={topStates} />
-      </Card>
-      <Card title="Top 15 Cities · Geographic Distribution" subtitle="By balance · Las Vegas leads at 7.53%" actions={['export']}>
-        <GeoTable rows={topCities} />
-      </Card>
-    </section>
-  );
+interface Props {
+  distribution: GeographyDistribution
 }
 
-function GeoTable({ rows }: { rows: GeoRow[] }) {
-  const total = rows.reduce((s, r) => s + r.balance, 0);
+// property_count / % of properties, not $ balance - ABS-EE doesn't allocate
+// a loan's balance across its properties, so a per-state balance would be
+// invented. See analytics.py get_geography_distribution.
+export function Geography({ distribution }: Props) {
+  const missingNote =
+    distribution.properties_missing_state > 0
+      ? `${distribution.properties_missing_state} propert(y/ies) missing a state · `
+      : ''
+
   return (
-    <table className="vt">
-      <thead>
-        <tr>
-          <th>Location</th>
-          <th className="num">Balance</th>
-          <th className="num">% of Pool</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r, i) => (
-          <tr key={`${r.loc}-${i}`}>
-            <td className={r.loc === 'Other' ? 'text-text-md' : 'link'}>{r.loc}</td>
-            <td className="num">{fmtNum(r.balance)}</td>
-            <td className="pct-cell num" style={{ ['--pct' as never]: `${r.pct}%` } as never}>
-              <span>{fmtPct(r.pct, 2)}</span>
-            </td>
+    <Card
+      id="geography"
+      title="Geographic Distribution"
+      subtitle={`${missingNote}${distribution.entries.length} states · by property count`}
+      actions={['export']}
+    >
+      <table className="vt">
+        <thead>
+          <tr>
+            <th>State</th>
+            <th className="num">Properties</th>
+            <th className="num">% of Properties</th>
           </tr>
-        ))}
-      </tbody>
-      <tfoot>
-        <tr>
-          <td>Total</td>
-          <td className="num">{fmtNum(total)}</td>
-          <td className="num">100.00%</td>
-        </tr>
-      </tfoot>
-    </table>
-  );
+        </thead>
+        <tbody>
+          {distribution.entries.map((e) => {
+            const pct =
+              distribution.total_properties > 0
+                ? (e.property_count / distribution.total_properties) * 100
+                : 0
+            return (
+              <tr key={e.state}>
+                <td>{e.state}</td>
+                <td className="num">{fmtNum(e.property_count)}</td>
+                <td className="pct-cell num" style={{ ['--pct' as never]: `${pct}%` } as never}>
+                  <span>{fmtPct(pct, 2)}</span>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td>Total</td>
+            <td className="num">{fmtNum(distribution.total_properties)}</td>
+            <td className="num">100.00%</td>
+          </tr>
+        </tfoot>
+      </table>
+    </Card>
+  )
 }

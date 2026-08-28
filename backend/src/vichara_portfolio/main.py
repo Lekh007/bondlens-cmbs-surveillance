@@ -9,6 +9,7 @@ tests/integration/bondlens/test_api.py.
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from vichara_portfolio.bondlens.api import router as bondlens_router
@@ -34,6 +35,17 @@ def create_app(
 ) -> FastAPI:
     settings = settings or Settings()  # type: ignore[call-arg]  # resolved from .env at runtime
     app = FastAPI(title="Vichara BondLens API")
+
+    # Local portfolio demo only - the frontend dev server (Vite) runs on a
+    # different origin/port than this API, so the browser needs an explicit
+    # CORS allow. No cookies/credentials are used, so allow_credentials
+    # stays at its default False.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     app.state.settings = settings
     app.state.job_queue = job_queue or RQJobQueue(redis_url=settings.redis_url)

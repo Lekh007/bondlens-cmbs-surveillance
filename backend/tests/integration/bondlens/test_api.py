@@ -15,7 +15,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from vichara_portfolio.bondlens.deal_cache import DEAL_CACHE, DealCacheEntry
-from vichara_portfolio.bondlens.domain import Deal, Loan, ReportingPeriod
+from vichara_portfolio.bondlens.domain import (
+    Deal,
+    Loan,
+    PropertyAtSecuritization,
+    PropertySnapshot,
+    ReportingPeriod,
+)
 from vichara_portfolio.main import create_app
 from vichara_portfolio.model_gateway.deterministic import DeterministicProvider
 from vichara_portfolio.model_gateway.ports import GenerateResult, ModelInfo
@@ -36,7 +42,39 @@ def _source(label: str) -> SourceRef:
     )
 
 
-def _loan(asset_number: str, *, status: str, ending_date: date) -> Loan:
+def _property(name: str, *, state: str | None, type_code: str | None) -> PropertySnapshot:
+    return PropertySnapshot(
+        property_name=name,
+        property_address=None,
+        property_city=None,
+        property_state=state,
+        property_zip=None,
+        property_county=None,
+        property_type_code=type_code,
+        year_built=None,
+        net_rentable_square_feet=None,
+        at_securitization=PropertyAtSecuritization(
+            valuation_amount=None,
+            valuation_date=None,
+            physical_occupancy_percentage=None,
+            net_rentable_square_feet=None,
+            revenue_amount=None,
+            operating_expenses_amount=None,
+            net_operating_income_amount=None,
+            net_cash_flow_amount=None,
+        ),
+        most_recent=None,
+        raw_fields={},
+    )
+
+
+def _loan(
+    asset_number: str,
+    *,
+    status: str,
+    ending_date: date,
+    properties: tuple[PropertySnapshot, ...] = (),
+) -> Loan:
     return Loan(
         asset_number=asset_number,
         group_id=None,
@@ -52,7 +90,7 @@ def _loan(asset_number: str, *, status: str, ending_date: date) -> Loan:
         actual_balance_amount=Decimal("900000.00"),
         scheduled_balance_amount=Decimal("900000.00"),
         payment_status_code=status,
-        properties=(),
+        properties=properties,
         raw_fields={},
         source=_source("fixture"),
     )
@@ -103,6 +141,23 @@ def test_health_live_is_always_200() -> None:
     response = client.get("/health/live")
     assert response.status_code == 200
     assert response.json() == {"status": "live"}
+
+
+def test_cors_allows_the_local_vite_dev_origin() -> None:
+    """Regression test for a real bug (2026-08-29, live browser
+    verification): the browser blocked every frontend request with
+    'No Access-Control-Allow-Origin header' because create_app() had no
+    CORS middleware at all."""
+    client = _client()
+    response = client.options(
+        "/api/bondlens/deals",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
 
 
 @pytest.mark.integration
@@ -239,6 +294,140 @@ def test_deal_compare_with_two_periods_returns_changes() -> None:
     assert response.status_code == 200
     changes = response.json()["changes"]
     assert any(c["field_name"] == "paymentStatusLoanCode" for c in changes)
+
+
+# --------------------------------------------------------------------------
+# Geography and property-type distribution
+# --------------------------------------------------------------------------
+
+
+def test_geography_for_unknown_deal_is_404() -> None:
+    client = _client()
+    response = client.get("/api/bondlens/deals/nope/geography")
+    assert response.status_code == 404
+
+
+def test_geography_returns_state_counts() -> None:
+    loans = (
+        _loan(
+            "1",
+            status="0",
+            ending_date=date(2026, 7, 13),
+            properties=(
+                _property("A", state="NY", type_code="MF"),
+                _property("B", state="NY", type_code="OF"),
+                _property("C", state="CA", type_code=None),
+            ),
+        ),
+    )
+    DEAL_CACHE["0002110410"] = DealCacheEntry(
+        deal=Deal(cik="0002110410", name="Benchmark 2026-B42 Mortgage Trust"),
+        loans_a=(),
+        loans_b=loans,
+        filing_source=_source("july"),
+    )
+
+    client = _client()
+    response = client.get("/api/bondlens/deals/0002110410/geography")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_properties"] == 3
+    assert body["properties_missing_state"] == 0
+    assert {e["state"]: e["property_count"] for e in body["entries"]} == {"NY": 2, "CA": 1}
+
+
+def test_property_types_returns_code_counts() -> None:
+    loans = (
+        _loan(
+            "1",
+            status="0",
+            ending_date=date(2026, 7, 13),
+            properties=(
+                _property("A", state="NY", type_code="MF"),
+                _property("B", state="NY", type_code="OF"),
+                _property("C", state="CA", type_code=None),
+            ),
+        ),
+    )
+    DEAL_CACHE["0002110410"] = DealCacheEntry(
+        deal=Deal(cik="0002110410", name="Benchmark 2026-B42 Mortgage Trust"),
+        loans_a=(),
+        loans_b=loans,
+        filing_source=_source("july"),
+    )
+
+    client = _client()
+    response = client.get("/api/bondlens/deals/0002110410/property-types")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_properties"] == 3
+    assert body["properties_missing_type"] == 1
+    assert {e["property_type_code"]: e["property_count"] for e in body["entries"]} == {
+        "MF": 1,
+        "OF": 1,
+    }
+
+
+# --------------------------------------------------------------------------
+# Status-change and balance-drift rankings
+# --------------------------------------------------------------------------
+
+
+def test_status_changes_with_only_one_period_returns_422() -> None:
+    DEAL_CACHE["0002110410"] = DealCacheEntry(
+        deal=Deal(cik="0002110410", name="Benchmark 2026-B42 Mortgage Trust"),
+        loans_a=(),
+        loans_b=(_loan("1", status="0", ending_date=date(2026, 7, 13)),),
+        filing_source=_source("july"),
+    )
+
+    client = _client()
+    response = client.get("/api/bondlens/deals/0002110410/status-changes")
+
+    assert response.status_code == 422
+
+
+def test_status_changes_returns_ranked_entries() -> None:
+    DEAL_CACHE["0002110410"] = DealCacheEntry(
+        deal=Deal(cik="0002110410", name="Benchmark 2026-B42 Mortgage Trust"),
+        loans_a=(_loan("30", status="0", ending_date=date(2026, 5, 11)),),
+        loans_b=(_loan("30", status="B", ending_date=date(2026, 7, 13)),),
+        filing_source=_source("july"),
+    )
+
+    client = _client()
+    response = client.get("/api/bondlens/deals/0002110410/status-changes")
+
+    assert response.status_code == 200
+    entries = response.json()["entries"]
+    assert entries[0]["loan_asset_number"] == "30"
+    assert entries[0]["status_before"] == "0"
+    assert entries[0]["status_after"] == "B"
+
+
+def test_balance_drift_for_unknown_deal_is_404() -> None:
+    client = _client()
+    response = client.get("/api/bondlens/deals/nope/balance-drift")
+    assert response.status_code == 404
+
+
+def test_balance_drift_returns_ranked_entries() -> None:
+    DEAL_CACHE["0002110410"] = DealCacheEntry(
+        deal=Deal(cik="0002110410", name="Benchmark 2026-B42 Mortgage Trust"),
+        loans_a=(),
+        loans_b=(_loan("1", status="0", ending_date=date(2026, 7, 13)),),
+        filing_source=_source("july"),
+    )
+
+    client = _client()
+    response = client.get("/api/bondlens/deals/0002110410/balance-drift")
+
+    assert response.status_code == 200
+    entries = response.json()["entries"]
+    assert entries[0]["loan_asset_number"] == "1"
+    assert entries[0]["actual_balance_amount"] == "900000.00"
 
 
 # --------------------------------------------------------------------------

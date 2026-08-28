@@ -11,16 +11,12 @@ import {
 } from 'lucide-react';
 
 const ANCHORS = [
-  { id: 'overview',         label: 'Overview' },
-  { id: 'deal-overview',    label: 'Deal Overview' },
-  { id: 'scenarios',        label: 'Projected Loss Scenarios' },
-  { id: 'bonds',            label: 'Bonds & Tranches' },
-  { id: 'focus',            label: 'Focus & Delinquency' },
-  { id: 'property',         label: 'Property Type' },
-  { id: 'geography',        label: 'Geography' },
-  { id: 'balance-maturity', label: 'Balance & Maturity' },
-  { id: 'lease',            label: 'Lease Rollover' },
-  { id: 'servicer',         label: 'Servicer Commentary' },
+  { id: 'overview',           label: 'Overview' },
+  { id: 'period-comparison',  label: 'Period Comparison' },
+  { id: 'focus',              label: 'Payment Status Changes' },
+  { id: 'balance-maturity',   label: 'Balance Drift' },
+  { id: 'property',           label: 'Property Type' },
+  { id: 'geography',          label: 'Geography' },
 ];
 
 const OTHER_TABS = [
@@ -92,9 +88,9 @@ export function Sidebar() {
       ))}
 
       <div className="mt-6 p-3 rounded-lg" style={{ background: '#EFF6FF', border: '1px solid #DBEAFE' }}>
-        <div className="text-2xs font-semibold text-navy uppercase tracking-wider mb-1">Prototype</div>
+        <div className="text-2xs font-semibold text-navy uppercase tracking-wider mb-1">Portfolio Demo</div>
         <div className="text-[12px] text-text-md leading-snug">
-          Wireframe redesign of Deal Summary tab. Other tabs follow the same system.
+          Loan-level CMBS ABS-EE surveillance, backed by real SEC filings. Other tabs are not built.
         </div>
       </div>
     </aside>

@@ -1,80 +1,57 @@
-import { TrendingUp, TrendingDown, Briefcase, Minus } from 'lucide-react';
-import { Pill } from '@/features/bondlens/components/ui/Pill';
-import { dealOverview, portfolioMetrics } from '@/features/bondlens/data/deal';
-import { fmtMoney, fmtPct, fmtDscr, fmtNum } from '@/features/bondlens/lib/format';
+import { Layers, Calendar } from 'lucide-react'
+import type { DealSummary } from '@/features/bondlens/api'
+import { fmtMoney, fmtNum } from '@/features/bondlens/lib/format'
 
-interface Kpi {
-  label: string;
-  value: string;
-  delta?: { direction: 'up' | 'down' | 'flat'; text: string; variant: 'gain' | 'loss' | 'warn' | 'neutral' };
-  footRight?: string;
+interface Props {
+  summary: DealSummary
 }
 
-export function KpiHero() {
-  const kpis: Kpi[] = [
-    {
-      label: 'Deal Type',
-      value: dealOverview.type,
-      delta: { direction: 'flat', text: 'Vintage 2019', variant: 'neutral' },
-    },
-    {
-      label: 'Total Balance',
-      value: fmtMoney(portfolioMetrics.totalBalanceCurr),
-      delta: { direction: 'down', text: '6.0% vs orig', variant: 'loss' },
-      footRight: `${fmtMoney(portfolioMetrics.totalBalanceOrig)} orig`,
-    },
-    {
-      label: '# of Loans',
-      value: fmtNum(portfolioMetrics.numLoansCurr),
-      delta: { direction: 'flat', text: 'unchanged', variant: 'neutral' },
-      footRight: `avg ${fmtMoney(portfolioMetrics.avgBalanceCurr)}`,
-    },
-    {
-      label: 'WAC',
-      value: fmtPct(portfolioMetrics.wacCurr, 2),
-      delta: { direction: 'up', text: '+9 bp', variant: 'gain' },
-      footRight: `${fmtPct(portfolioMetrics.wacOrig, 2)} orig`,
-    },
-    {
-      label: 'WA LTV',
-      value: fmtPct(portfolioMetrics.waLtvCurr, 2),
-      delta: { direction: 'up', text: '+64 bp', variant: 'warn' },
-      footRight: `${fmtPct(portfolioMetrics.waLtvOrig, 2)} orig`,
-    },
-    {
-      label: 'WA DSCR',
-      value: fmtDscr(portfolioMetrics.waDscrCurr),
-      delta: { direction: 'up', text: '+0.45x', variant: 'gain' },
-      footRight: `${fmtDscr(portfolioMetrics.waDscrOrig)} orig`,
-    },
-    {
-      label: 'Curr Cum Loss',
-      value: fmtPct(portfolioMetrics.currCumLossCurr, 2),
-      delta: { direction: 'flat', text: 'no realized loss', variant: 'neutral' },
-      footRight: `proj ${fmtPct(portfolioMetrics.projCumLossCurr, 1)}`,
-    },
-  ];
+// Only fields the backend's get_deal_summary actually computes from real
+// ABS-EE data - no WAC/LTV/DSCR/cum-loss, since those aren't modeled by
+// BondLens's loan/property domain (see analytics.py DealSummary).
+export function KpiHero({ summary }: Props) {
+  const original = Number(summary.total_original_loan_amount)
+  const actual = Number(summary.total_actual_balance_amount)
+  const paydownPct = original > 0 ? ((original - actual) / original) * 100 : null
 
   return (
-    <section id="overview" className="grid grid-cols-7 gap-3">
-      {kpis.map((k, i) => (
-        <div key={i} className="kpi">
-          <div className="kpi-label">{k.label}</div>
-          <div className="kpi-value num">{k.value}</div>
-          <div className="kpi-foot">
-            {k.delta && (
-              <Pill variant={k.delta.variant}>
-                {k.delta.direction === 'up'   && <TrendingUp size={11} strokeWidth={2} />}
-                {k.delta.direction === 'down' && <TrendingDown size={11} strokeWidth={2} />}
-                {k.delta.direction === 'flat' && <Minus size={11} strokeWidth={2} />}
-                {k.delta.text}
-              </Pill>
-            )}
-            {k.footRight && <span className="text-[10.5px] text-text-lo num">{k.footRight}</span>}
-            {!k.footRight && k.label === 'Deal Type' && <Briefcase size={13} strokeWidth={1.6} className="text-text-lo" />}
-          </div>
+    <section id="overview" className="grid grid-cols-4 gap-3">
+      <div className="kpi">
+        <div className="kpi-label">Loan Count</div>
+        <div className="kpi-value num">{fmtNum(summary.loan_count)}</div>
+        <div className="kpi-foot">
+          <span className="text-[10.5px] text-text-lo num">
+            {fmtNum(summary.property_count)} properties
+          </span>
+          <Layers size={13} strokeWidth={1.6} className="text-text-lo" />
         </div>
-      ))}
+      </div>
+
+      <div className="kpi">
+        <div className="kpi-label">Actual Balance</div>
+        <div className="kpi-value num">{fmtMoney(actual)}</div>
+        <div className="kpi-foot">
+          <span className="text-[10.5px] text-text-lo num">{fmtMoney(original)} original</span>
+        </div>
+      </div>
+
+      <div className="kpi">
+        <div className="kpi-label">Paydown Since Issuance</div>
+        <div className="kpi-value num">
+          {paydownPct === null ? '—' : `${paydownPct.toFixed(2)}%`}
+        </div>
+        <div className="kpi-foot">
+          <span className="text-[10.5px] text-text-lo">of original balance</span>
+        </div>
+      </div>
+
+      <div className="kpi">
+        <div className="kpi-label">Latest Reporting Period</div>
+        <div className="kpi-value num">{summary.reporting_period_ending_date ?? '—'}</div>
+        <div className="kpi-foot">
+          <Calendar size={13} strokeWidth={1.6} className="text-text-lo" />
+        </div>
+      </div>
     </section>
-  );
+  )
 }

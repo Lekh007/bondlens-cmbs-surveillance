@@ -1,50 +1,60 @@
-import { Card } from '@/features/bondlens/components/ui/Card';
-import { propertyTypes } from '@/features/bondlens/data/deal';
-import { fmtNum, fmtPct } from '@/features/bondlens/lib/format';
+import { Card } from '@/features/bondlens/components/ui/Card'
+import type { PropertyTypeDistribution as PropertyTypeDistributionData } from '@/features/bondlens/api'
+import { fmtNum, fmtPct } from '@/features/bondlens/lib/format'
 
-export function PropertyTypeDistribution() {
-  const totalLoans = propertyTypes.reduce((s, p) => s + p.loans, 0);
-  const totalBalance = propertyTypes.reduce((s, p) => s + p.balance, 0);
+interface Props {
+  distribution: PropertyTypeDistributionData
+}
+
+// Raw SEC ABS-EE propertyTypeCode values (e.g. "SS", "MF"), not expanded
+// to full names - the code-to-label mapping isn't verified against this
+// deal's actual data, so showing the raw code beats guessing a label.
+export function PropertyTypeDistribution({ distribution }: Props) {
+  const missingNote =
+    distribution.properties_missing_type > 0
+      ? `${distribution.properties_missing_type} propert(y/ies) missing a type code · `
+      : ''
 
   return (
     <Card
       id="property"
       title="Property Type Distribution"
-      subtitle={`${propertyTypes.length} property types · 50 properties · $960.3M total balance`}
-      actions={['columns', 'export']}
+      subtitle={`${missingNote}${distribution.entries.length} property type codes (raw ABS-EE codes)`}
+      actions={['export']}
     >
-      <div className="overflow-x-auto">
-        <table className="vt">
-          <thead>
-            <tr>
-              <th>Property Type</th>
-              <th className="num"># Loans</th>
-              <th className="num">Balance</th>
-              <th className="num">% of Pool</th>
-            </tr>
-          </thead>
-          <tbody>
-            {propertyTypes.map(p => (
-              <tr key={p.type}>
-                <td className="link">{p.type}</td>
-                <td className="num">{p.loans}</td>
-                <td className="num">{fmtNum(p.balance)}</td>
-                <td className="pct-cell num" style={{ ['--pct' as never]: `${p.pct}%` } as never}>
-                  <span>{fmtPct(p.pct, 2)}</span>
+      <table className="vt">
+        <thead>
+          <tr>
+            <th>Type Code</th>
+            <th className="num">Properties</th>
+            <th className="num">% of Properties</th>
+          </tr>
+        </thead>
+        <tbody>
+          {distribution.entries.map((e) => {
+            const pct =
+              distribution.total_properties > 0
+                ? (e.property_count / distribution.total_properties) * 100
+                : 0
+            return (
+              <tr key={e.property_type_code}>
+                <td className="num">{e.property_type_code}</td>
+                <td className="num">{fmtNum(e.property_count)}</td>
+                <td className="pct-cell num" style={{ ['--pct' as never]: `${pct}%` } as never}>
+                  <span>{fmtPct(pct, 2)}</span>
                 </td>
               </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td>Total</td>
-              <td className="num">{totalLoans}</td>
-              <td className="num">{fmtNum(totalBalance)}</td>
-              <td className="num">100.00%</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+            )
+          })}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td>Total</td>
+            <td className="num">{fmtNum(distribution.total_properties)}</td>
+            <td className="num">100.00%</td>
+          </tr>
+        </tfoot>
+      </table>
     </Card>
-  );
+  )
 }

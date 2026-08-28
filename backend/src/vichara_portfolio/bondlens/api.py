@@ -13,8 +13,16 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from vichara_portfolio.bondlens.agent import build_agent_graph
-from vichara_portfolio.bondlens.analytics import compare_reporting_periods, get_deal_summary
+from vichara_portfolio.bondlens.analytics import (
+    compare_reporting_periods,
+    get_deal_summary,
+    get_geography_distribution,
+    get_property_type_distribution,
+    rank_loans_by_balance_drift,
+    rank_loans_by_status_change,
+)
 from vichara_portfolio.bondlens.deal_cache import DEAL_CACHE
+from vichara_portfolio.bondlens.domain import Loan
 from vichara_portfolio.model_gateway.ports import ModelProvider
 from vichara_portfolio.shared.jobs import JobQueuePort, JobRecord, JobStatus
 
@@ -72,6 +80,56 @@ class CompareResponse(BaseModel):
     period_a_ending_date: str | None
     period_b_ending_date: str | None
     changes: list[LoanFieldChangeItem]
+
+
+class PropertyTypeEntryItem(BaseModel):
+    property_type_code: str
+    property_count: int
+
+
+class PropertyTypeDistributionResponse(BaseModel):
+    entries: list[PropertyTypeEntryItem]
+    total_properties: int
+    properties_missing_type: int
+
+
+class GeographyEntryItem(BaseModel):
+    state: str
+    property_count: int
+
+
+class GeographyDistributionResponse(BaseModel):
+    entries: list[GeographyEntryItem]
+    total_properties: int
+    properties_missing_state: int
+
+
+class StatusChangeEntryItem(BaseModel):
+    loan_asset_number: str
+    property_names: list[str]
+    status_before: str | None
+    status_after: str | None
+    severity_rank: int
+
+
+class StatusChangeRankingResponse(BaseModel):
+    entries: list[StatusChangeEntryItem]
+    period_a_ending_date: str | None
+    period_b_ending_date: str | None
+
+
+class BalanceDriftEntryItem(BaseModel):
+    loan_asset_number: str
+    property_names: list[str]
+    actual_balance_amount: str
+    scheduled_balance_amount: str
+    drift_amount: str
+    drift_percentage: str | None
+
+
+class BalanceDriftRankingResponse(BaseModel):
+    entries: list[BalanceDriftEntryItem]
+    as_of_date: str | None
 
 
 class ChatRequest(BaseModel):
@@ -197,6 +255,114 @@ def deal_compare(deal_id: str) -> CompareResponse:
             )
             for c in comparison.changes
         ],
+    )
+
+
+# --------------------------------------------------------------------------
+# Geography and property-type distribution - always derived from the
+# latest ingested period (loans_b), since propertyState/propertyTypeCode
+# are frozen-at-issuance fields that don't vary period to period.
+# --------------------------------------------------------------------------
+
+
+def _latest_loans_or_404(deal_id: str) -> tuple[Loan, ...]:
+    entry = DEAL_CACHE.get(deal_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"deal {deal_id} has not been ingested")
+    return entry.loans_b or entry.loans_a
+
+
+@router.get("/api/bondlens/deals/{deal_id}/geography", response_model=GeographyDistributionResponse)
+def deal_geography(deal_id: str) -> GeographyDistributionResponse:
+    loans = _latest_loans_or_404(deal_id)
+    dist = get_geography_distribution(loans)
+    return GeographyDistributionResponse(
+        entries=[
+            GeographyEntryItem(state=e.state, property_count=e.property_count) for e in dist.entries
+        ],
+        total_properties=dist.total_properties,
+        properties_missing_state=dist.properties_missing_state,
+    )
+
+
+@router.get(
+    "/api/bondlens/deals/{deal_id}/property-types", response_model=PropertyTypeDistributionResponse
+)
+def deal_property_types(deal_id: str) -> PropertyTypeDistributionResponse:
+    loans = _latest_loans_or_404(deal_id)
+    dist = get_property_type_distribution(loans)
+    return PropertyTypeDistributionResponse(
+        entries=[
+            PropertyTypeEntryItem(
+                property_type_code=e.property_type_code, property_count=e.property_count
+            )
+            for e in dist.entries
+        ],
+        total_properties=dist.total_properties,
+        properties_missing_type=dist.properties_missing_type,
+    )
+
+
+# --------------------------------------------------------------------------
+# Status-change and balance-drift rankings
+# --------------------------------------------------------------------------
+
+
+@router.get(
+    "/api/bondlens/deals/{deal_id}/status-changes", response_model=StatusChangeRankingResponse
+)
+def deal_status_changes(deal_id: str) -> StatusChangeRankingResponse:
+    entry = DEAL_CACHE.get(deal_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"deal {deal_id} has not been ingested")
+    if not entry.loans_a or not entry.loans_b:
+        raise HTTPException(
+            status_code=422,
+            detail=f"deal {deal_id} does not have two reporting periods to compare yet",
+        )
+
+    ranking = rank_loans_by_status_change(entry.loans_a, entry.loans_b)
+    return StatusChangeRankingResponse(
+        entries=[
+            StatusChangeEntryItem(
+                loan_asset_number=e.loan_asset_number,
+                property_names=list(e.property_names),
+                status_before=e.status_before,
+                status_after=e.status_after,
+                severity_rank=e.severity_rank,
+            )
+            for e in ranking.entries
+        ],
+        period_a_ending_date=(
+            ranking.period_a_ending_date.isoformat() if ranking.period_a_ending_date else None
+        ),
+        period_b_ending_date=(
+            ranking.period_b_ending_date.isoformat() if ranking.period_b_ending_date else None
+        ),
+    )
+
+
+@router.get(
+    "/api/bondlens/deals/{deal_id}/balance-drift", response_model=BalanceDriftRankingResponse
+)
+def deal_balance_drift(deal_id: str) -> BalanceDriftRankingResponse:
+    loans = _latest_loans_or_404(deal_id)
+    ranking = rank_loans_by_balance_drift(loans)
+    return BalanceDriftRankingResponse(
+        entries=[
+            BalanceDriftEntryItem(
+                loan_asset_number=e.loan_asset_number,
+                property_names=list(e.property_names),
+                actual_balance_amount=str(e.actual_balance_amount),
+                scheduled_balance_amount=str(e.scheduled_balance_amount),
+                drift_amount=str(e.drift_amount),
+                drift_percentage=str(e.drift_percentage)
+                if e.drift_percentage is not None
+                else None,
+            )
+            for e in ranking.entries
+        ],
+        as_of_date=ranking.as_of_date.isoformat() if ranking.as_of_date else None,
     )
 
 

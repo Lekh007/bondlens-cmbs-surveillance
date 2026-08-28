@@ -15,8 +15,10 @@ from vichara_portfolio.bondlens.adapters.abs_ee import parse_asset_data
 from vichara_portfolio.bondlens.analytics import (
     compare_reporting_periods,
     get_deal_summary,
+    get_geography_distribution,
     get_loan_history,
     get_property_profile,
+    get_property_type_distribution,
     rank_loans_by_balance_drift,
     rank_loans_by_status_change,
     rank_properties_by_noi_change,
@@ -289,3 +291,72 @@ def test_property_profile_for_unknown_property_name_is_none(july_loans) -> None:
         )
         is None
     )
+
+
+# --------------------------------------------------------------------------
+# get_property_type_distribution - real SEC ABS-EE propertyTypeCode values,
+# not decorated with invented full-name labels (raw codes only)
+# --------------------------------------------------------------------------
+
+
+def test_property_type_distribution_counts_match_the_real_july_filing(july_loans) -> None:
+    dist = get_property_type_distribution(july_loans)
+    counts = {e.property_type_code: e.property_count for e in dist.entries}
+
+    assert dist.total_properties == 123
+    assert dist.properties_missing_type == 0
+    assert counts == {
+        "SS": 52,
+        "CH": 25,
+        "RT": 20,
+        "MU": 15,
+        "MH": 6,
+        "OF": 3,
+        "MF": 1,
+        "LO": 1,
+    }
+
+
+def test_property_type_distribution_is_sorted_by_count_descending(july_loans) -> None:
+    dist = get_property_type_distribution(july_loans)
+    counts = [e.property_count for e in dist.entries]
+    assert counts == sorted(counts, reverse=True)
+    assert dist.entries[0].property_type_code == "SS"
+
+
+def test_property_type_distribution_of_no_loans_is_empty_not_a_crash() -> None:
+    dist = get_property_type_distribution(())
+    assert dist.entries == ()
+    assert dist.total_properties == 0
+    assert dist.properties_missing_type == 0
+
+
+# --------------------------------------------------------------------------
+# get_geography_distribution - real propertyState values (USPS codes)
+# --------------------------------------------------------------------------
+
+
+def test_geography_distribution_counts_match_the_real_july_filing(july_loans) -> None:
+    dist = get_geography_distribution(july_loans)
+    counts = {e.state: e.property_count for e in dist.entries}
+
+    assert dist.total_properties == 123
+    assert dist.properties_missing_state == 0
+    assert len(dist.entries) == 34
+    assert counts["NY"] == 31
+    assert counts["CA"] == 13
+    assert counts["TX"] == 12
+
+
+def test_geography_distribution_is_sorted_by_count_descending(july_loans) -> None:
+    dist = get_geography_distribution(july_loans)
+    counts = [e.property_count for e in dist.entries]
+    assert counts == sorted(counts, reverse=True)
+    assert dist.entries[0].state == "NY"
+
+
+def test_geography_distribution_of_no_loans_is_empty_not_a_crash() -> None:
+    dist = get_geography_distribution(())
+    assert dist.entries == ()
+    assert dist.total_properties == 0
+    assert dist.properties_missing_state == 0
