@@ -55,7 +55,9 @@ def build_accession_txt_url(cik: str, accession: str) -> str:
 def build_exhibit_url(cik: str, accession: str, filename: str) -> str:
     unpadded_cik = cik.lstrip("0") or "0"
     accession_no_hyphens = accession.replace("-", "")
-    return f"https://www.sec.gov/Archives/edgar/data/{unpadded_cik}/{accession_no_hyphens}/{filename}"
+    return (
+        f"https://www.sec.gov/Archives/edgar/data/{unpadded_cik}/{accession_no_hyphens}/{filename}"
+    )
 
 
 def parse_document_index(
@@ -130,7 +132,5 @@ class FilingStore:
             record_id=accession,
             immutable=True,
         )
-        stored = self._store.write(
-            source="sec", filename=document.filename, content=result.payload
-        )
+        stored = self._store.write(source="sec", filename=document.filename, content=result.payload)
         return stored, result.source

@@ -117,9 +117,7 @@ class ResilientHttpClient:
             raise ContentTypeError(
                 f"expected one of {allowed_content_types}, got {content_type!r} from {url}"
             )
-        source = SourceRef.now(
-            source_name=self._source_name, source_url=url, record_id=record_id
-        )
+        source = SourceRef.now(source_name=self._source_name, source_url=url, record_id=record_id)
         result = HttpResult(payload=response.content, source=source)
         if immutable:
             self._immutable_cache[url] = result
@@ -150,9 +148,7 @@ class ResilientHttpClient:
         content_type = response.headers.get("content-type", "")
         if "application/json" not in content_type:
             raise ContentTypeError(f"expected application/json, got {content_type!r} from {url}")
-        source = SourceRef.now(
-            source_name=self._source_name, source_url=url, record_id=record_id
-        )
+        source = SourceRef.now(source_name=self._source_name, source_url=url, record_id=record_id)
         return HttpResult(payload=response.json(), source=source)
 
     def _dispatch(

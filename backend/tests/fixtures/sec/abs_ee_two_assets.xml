@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ns:assetData xmlns:ns="http://www.sec.gov/edgar/document/absee/cmbs/assetdata">
+  <ns:assets>
+    <ns:assetTypeNumber>1</ns:assetTypeNumber>
+    <ns:assetNumber>16</ns:assetNumber>
+    <ns:GroupID>1</ns:GroupID>
+    <ns:reportingPeriodBeginningDate>2026-06-01</ns:reportingPeriodBeginningDate>
+    <ns:reportingPeriodEndDate>2026-06-30</ns:reportingPeriodEndDate>
+    <ns:originatorName>German American Capital Corporation</ns:originatorName>
+    <ns:originationDate>2026-02-10</ns:originationDate>
+    <ns:originalLoanAmount>45000000.00</ns:originalLoanAmount>
+    <ns:originalInterestRatePercentage>.05875000</ns:originalInterestRatePercentage>
+    <ns:paidThroughDate>2026-07-01</ns:paidThroughDate>
+    <ns:scheduledPrincipalAmount>12345.67</ns:scheduledPrincipalAmount>
+    <ns:scheduledInterestAmount>219791.67</ns:scheduledInterestAmount>
+    <ns:reportPeriodEndActualBalanceAmount>44832100.55</ns:reportPeriodEndActualBalanceAmount>
+    <ns:reportPeriodEndScheduledLoanBalanceAmount>44832100.55</ns:reportPeriodEndScheduledLoanBalanceAmount>
+    <ns:paymentStatusLoanCode>B</ns:paymentStatusLoanCode>
+    <!-- maturityDate deliberately absent: real filings omit optional elements entirely rather than emitting them empty -->
+    <ns:property>
+      <ns:propertyName>PWC Pennant</ns:propertyName>
+      <ns:propertyAddress>1 Pennant Way</ns:propertyAddress>
+      <ns:propertyCity>St. Louis</ns:propertyCity>
+      <ns:propertyState>MO</ns:propertyState>
+      <ns:propertyZip>63101</ns:propertyZip>
+      <ns:propertyCounty>St. Louis City</ns:propertyCounty>
+      <ns:propertyTypeCode>OF</ns:propertyTypeCode>
+      <ns:yearBuiltNumber>1998</ns:yearBuiltNumber>
+      <ns:netRentableSquareFeetNumber>412000</ns:netRentableSquareFeetNumber>
+      <ns:valuationSecuritizationAmount>68000000.00</ns:valuationSecuritizationAmount>
+      <ns:valuationSecuritizationDate>2026-01-15</ns:valuationSecuritizationDate>
+      <ns:physicalOccupancySecuritizationPercentage>.91200000</ns:physicalOccupancySecuritizationPercentage>
+      <ns:revenueSecuritizationAmount>9800000.00</ns:revenueSecuritizationAmount>
+      <ns:operatingExpensesSecuritizationAmount>4100000.00</ns:operatingExpensesSecuritizationAmount>
+      <ns:netOperatingIncomeSecuritizationAmount>5700000.00</ns:netOperatingIncomeSecuritizationAmount>
+      <ns:netCashFlowFlowSecuritizationAmount>5450000.00</ns:netCashFlowFlowSecuritizationAmount>
+      <!-- no mostRecent* fields at all: this property has never had a servicer update since securitization -->
+    </ns:property>
+    <ns:assetAddedIndicator>0</ns:assetAddedIndicator>
+  </ns:assets>
+  <ns:assets>
+    <ns:assetTypeNumber>1</ns:assetTypeNumber>
+    <ns:assetNumber>29</ns:assetNumber>
+    <ns:GroupID>1</ns:GroupID>
+    <ns:reportingPeriodBeginningDate>2026-06-01</ns:reportingPeriodBeginningDate>
+    <ns:reportingPeriodEndDate>2026-06-30</ns:reportingPeriodEndDate>
+    <ns:originatorName>Goldman Sachs Mortgage Company</ns:originatorName>
+    <ns:originationDate>2026-02-10</ns:originationDate>
+    <ns:originalLoanAmount>52000000.00</ns:originalLoanAmount>
+    <ns:originalInterestRatePercentage>.06010000</ns:originalInterestRatePercentage>
+    <ns:maturityDate>2036-03-01</ns:maturityDate>
+    <ns:paidThroughDate>2026-07-01</ns:paidThroughDate>
+    <ns:scheduledPrincipalAmount>0.00</ns:scheduledPrincipalAmount>
+    <ns:scheduledInterestAmount>260433.33</ns:scheduledInterestAmount>
+    <ns:reportPeriodEndActualBalanceAmount>52000000.00</ns:reportPeriodEndActualBalanceAmount>
+    <ns:reportPeriodEndScheduledLoanBalanceAmount>52000000.00</ns:reportPeriodEndScheduledLoanBalanceAmount>
+    <ns:paymentStatusLoanCode>0</ns:paymentStatusLoanCode>
+    <ns:property>
+      <ns:propertyName>UOVO Evergreen</ns:propertyName>
+      <ns:propertyAddress>200 Evergreen Ave</ns:propertyAddress>
+      <ns:propertyCity>Brooklyn</ns:propertyCity>
+      <ns:propertyState>NY</ns:propertyState>
+      <ns:propertyZip>11221</ns:propertyZip>
+      <ns:propertyCounty>Kings</ns:propertyCounty>
+      <ns:propertyTypeCode>SS</ns:propertyTypeCode>
+      <ns:yearBuiltNumber>2019</ns:yearBuiltNumber>
+      <ns:netRentableSquareFeetNumber>185000</ns:netRentableSquareFeetNumber>
+      <ns:valuationSecuritizationAmount>81000000.00</ns:valuationSecuritizationAmount>
+      <ns:valuationSecuritizationDate>2026-01-15</ns:valuationSecuritizationDate>
+      <ns:physicalOccupancySecuritizationPercentage>.88000000</ns:physicalOccupancySecuritizationPercentage>
+      <ns:revenueSecuritizationAmount>7200000.00</ns:revenueSecuritizationAmount>
+      <ns:operatingExpensesSecuritizationAmount>2950000.00</ns:operatingExpensesSecuritizationAmount>
+      <ns:netOperatingIncomeSecuritizationAmount>4250000.00</ns:netOperatingIncomeSecuritizationAmount>
+      <ns:netCashFlowFlowSecuritizationAmount>4100000.00</ns:netCashFlowFlowSecuritizationAmount>
+      <ns:mostRecentFinancialsStartDate>2026-01-01</ns:mostRecentFinancialsStartDate>
+      <ns:mostRecentFinancialsEndDate>2026-03-31</ns:mostRecentFinancialsEndDate>
+      <ns:mostRecentRevenueAmount>1950000.00</ns:mostRecentRevenueAmount>
+      <ns:operatingExpensesAmount>820000.00</ns:operatingExpensesAmount>
+      <ns:mostRecentNetOperatingIncomeAmount>2591100.27</ns:mostRecentNetOperatingIncomeAmount>
+      <ns:mostRecentNetCashFlowAmount>2510000.00</ns:mostRecentNetCashFlowAmount>
+      <ns:mostRecentDebtServiceAmount>1522000.00</ns:mostRecentDebtServiceAmount>
+      <ns:mostRecentPhysicalOccupancyPercentage>.90480000</ns:mostRecentPhysicalOccupancyPercentage>
+      <ns:mostRecentDebtServiceCoverageNetOperatingIncomePercentage>1.70240000</ns:mostRecentDebtServiceCoverageNetOperatingIncomePercentage>
+      <ns:mostRecentDebtServiceCoverageNetCashFlowpercentage>1.64850000</ns:mostRecentDebtServiceCoverageNetCashFlowpercentage>
+    </ns:property>
+    <ns:assetAddedIndicator>0</ns:assetAddedIndicator>
+  </ns:assets>
+</ns:assetData>

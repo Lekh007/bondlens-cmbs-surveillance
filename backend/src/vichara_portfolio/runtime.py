@@ -91,9 +91,7 @@ def _evaluate_drive_d(probe: RuntimeProbe) -> CapabilityStatus:
 
 
 def _evaluate_cache_path(probe: RuntimeProbe) -> CapabilityStatus:
-    return CapabilityStatus(
-        "cache_path", Status.READY, str(probe.cache_path), required=True
-    )
+    return CapabilityStatus("cache_path", Status.READY, str(probe.cache_path), required=True)
 
 
 def _evaluate_gpu(probe: RuntimeProbe) -> CapabilityStatus:
@@ -167,9 +165,7 @@ def _check_docker() -> bool:
     if not docker:
         return False
     try:
-        result = subprocess.run(
-            [docker, "info"], capture_output=True, timeout=10
-        )
+        result = subprocess.run([docker, "info"], capture_output=True, timeout=10)
         return result.returncode == 0
     except (subprocess.SubprocessError, OSError):
         return False

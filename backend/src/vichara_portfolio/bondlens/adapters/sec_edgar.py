@@ -24,9 +24,7 @@ class SecEdgarClient:
         self._http = http
         self._user_agent = user_agent
 
-    def list_filings(
-        self, cik: str, *, forms: tuple[str, ...] | None = None
-    ) -> SubmissionsResult:
+    def list_filings(self, cik: str, *, forms: tuple[str, ...] | None = None) -> SubmissionsResult:
         padded_cik = _pad_cik(cik)
         url = SUBMISSIONS_URL_TEMPLATE.format(cik=padded_cik)
         result = self._http.get_json(
