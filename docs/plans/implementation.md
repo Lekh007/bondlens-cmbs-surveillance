@@ -491,7 +491,8 @@ Expected: PASS without network.
 
 ~~~powershell
 Set-Location -LiteralPath 'D:\Vichara-GenAI-Portfolio\backend'
-VICHARA_EXTERNAL_NETWORK_ENABLED=true uv run pytest -m live tests/contract/bondlens/test_sec_submissions.py -q
+$env:EXTERNAL_NETWORK_ENABLED = 'true'  # matches Settings.external_network_enabled - no VICHARA_ prefix, same as SEC_USER_AGENT
+uv run pytest -m live tests/contract/bondlens/test_sec_submissions.py -q
 ~~~
 
 Expected: entity name contains Benchmark 2026-B42 and at least one ABS-EE filing.
