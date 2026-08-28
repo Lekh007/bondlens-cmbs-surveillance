@@ -2,13 +2,15 @@
 
 > **Execution policy:** Work through this plan in order. Use TDD for domain logic and adapters, keep real-network tests explicitly marked, and commit after every task. Do not publish, deploy externally, or add paid services without the user's approval.
 
+> **ENVIRONMENT REVISION 2026-08-28 - read before Task 1.** There is no WSL Ubuntu distro on this machine (`wsl -l -v` shows only Docker Desktop's internal `docker-desktop` distro). Every `wsl -d Ubuntu -- bash -lc "cd /mnt/d/... && CMD"` line in this plan is void. **The backend runs natively on Windows** using the uv-managed Python 3.12.13 toolchain already installed (`uv python list`), not WSL. Translation rule: wherever this plan shows that WSL pattern, `Set-Location` to the stated directory (`D:\Vichara-GenAI-Portfolio\backend` unless noted) and run `CMD` directly in PowerShell. `uv` resolves and installs native Windows wheels; no cross-filesystem 9p penalty applies, so the earlier "move the venv off /mnt/d" advice below no longer applies either. Docker Desktop (Postgres, Redis, and later the packaged images) is unaffected - it drives its own Linux VM independently of where the Python interpreter runs. One consequence: RQ's default `Worker` calls `os.fork()`, which does not exist on Windows - dev mode uses RQ's `SimpleWorker` (in-process, no fork); the Linux/Docker path keeps the real forking `Worker`, so job isolation under load is only exercised in the container path.
+
 > **SCOPE REVISION 2026-08-28 - read before Task 1.** Only **BondLens (Tasks 1-17)** is in scope for the first release. Tasks 18-28 (AltSignal, PrivateAI Ops) are deferred stretch work; Tasks 29-34 apply to BondLens alone. The Sunday deadline was self-imposed and is withdrawn. The G1 acceptance demo has moved from property-level to **loan-level** surveillance after a measured data spike - see section 0 of the design document. Do not build against the original property-deterioration demo; there is no such signal in this deal.
 
 **Goal (original, superseded in part):** Build three locally runnable, CV-ready GenAI investment-data projects—BondLens AI, AltSignal AI, and PrivateAI Ops—using verified keyless public data and a local GPU-served LLM.
 
 **Architecture:** One monorepo contains a React product shell, a modular FastAPI backend, an RQ worker, PostgreSQL, FAISS, n8n, MLflow, Prometheus, and Grafana. Feature modules expose deep application services behind ports; SEC/API clients, storage, embeddings, Ollama, and workflow infrastructure are adapters. The same Python image runs the API and worker as separate processes in Docker.
 
-**Tech stack:** Python 3.12 in WSL2, uv, FastAPI, SQLAlchemy/Alembic, PostgreSQL 16, Redis/RQ, Polars, lxml/defusedxml, LlamaIndex, LangGraph/LangChain, FAISS, Hugging Face embeddings, Ollama, PyTorch, scikit-learn, MLflow, React 19, TypeScript, Vite, TanStack Query, Plotly, Vitest, Playwright, Docker Compose, n8n, Prometheus, Grafana, Kubernetes manifests, Locust.
+**Tech stack:** Python 3.12 (native Windows, uv-managed), FastAPI, SQLAlchemy/Alembic, PostgreSQL 16, Redis/RQ, Polars, lxml/defusedxml, LlamaIndex, LangGraph/LangChain, FAISS, Hugging Face embeddings, Ollama, PyTorch, scikit-learn, MLflow, React 19, TypeScript, Vite, TanStack Query, Plotly, Vitest, Playwright, Docker Compose, n8n, Prometheus, Grafana, Kubernetes manifests, Locust.
 
 **Approved design:** docs/superpowers/specs/2026-08-28-vichara-genai-portfolio-design.md
 
@@ -18,12 +20,12 @@
 
 - D: free space: 990.3 GB
 - Host Python: 3.11.15
-- WSL Ubuntu Python: 3.12.3
-- uv: 0.11.20 on Windows and available in WSL
+- WSL Ubuntu Python: none - no Ubuntu distro installed; backend runs natively on Windows instead (see environment revision above)
+- uv: 0.11.20 on Windows, managing CPython 3.12.13 natively
 - Node: 24.11.1; npm: 11.6.2
 - Git: 2.52.0
 - Docker Desktop: installed, currently stopped
-- GPU in WSL: RTX 4060 Laptop GPU, 8,188 MiB
+- GPU: RTX 4060 Laptop GPU, 8,188 MiB, visible to the native Windows process (and to Ollama, which also runs natively)
 - Ollama: not installed
 
 ---
@@ -233,30 +235,35 @@ git commit -m "chore: scaffold Vichara GenAI portfolio"
 - Create: frontend\package.json and Vite scaffold
 - Create: scripts\bootstrap.ps1
 
-> **Filesystem gotcha:** the project lives on `/mnt/d`, which is a 9p mount. Creating the uv venv there makes installing torch, faiss, sentence-transformers, and mlflow extremely slow and prone to partial writes. Set `UV_PROJECT_ENVIRONMENT=$HOME/.venvs/vichara` (WSL-native ext4) so source stays on D: but the environment does not. Same reasoning applies to `node_modules` if the frontend install crawls.
+> **Filesystem note (superseded):** the original concern was a `/mnt/d` 9p mount penalty under WSL. Running natively on Windows means the venv sits on D: directly (native NTFS, not a network-filesystem bridge), so no relocation is needed.
 
 > **torch weight:** torch is used only for a small MLP in the deferred AltSignal work. It is not needed for the BondLens release. Defer `uv add torch` until Task 22 rather than pulling ~2.5 GB of CUDA wheels now.
 
-- [ ] **Step 1: Initialize the backend in WSL**
+- [ ] **Step 1: Initialize the backend (native Windows)**
 
 ~~~powershell
-wsl -d Ubuntu -- bash -lc "cd /mnt/d/Vichara-GenAI-Portfolio && uv init --package --name vichara-portfolio --python 3.12 --vcs none backend"
+Set-Location -LiteralPath 'D:\Vichara-GenAI-Portfolio'
+uv init --package --name vichara-portfolio --python 3.12 --vcs none backend
 ~~~
 
 - [ ] **Step 2: Add core backend packages**
 
 ~~~powershell
-wsl -d Ubuntu -- bash -lc "cd /mnt/d/Vichara-GenAI-Portfolio/backend && uv add fastapi 'uvicorn[standard]' pydantic-settings httpx tenacity aiolimiter structlog sqlalchemy 'psycopg[binary]' alembic redis rq prometheus-client pyjwt pwdlib lxml defusedxml polars numpy"
-wsl -d Ubuntu -- bash -lc "cd /mnt/d/Vichara-GenAI-Portfolio/backend && uv add --dev pytest pytest-asyncio pytest-cov respx fakeredis locust ruff mypy"
+Set-Location -LiteralPath 'D:\Vichara-GenAI-Portfolio\backend'
+uv add fastapi 'uvicorn[standard]' pydantic-settings httpx tenacity aiolimiter structlog sqlalchemy 'psycopg[binary]' alembic redis rq prometheus-client pyjwt pwdlib lxml defusedxml polars numpy
+Set-Location -LiteralPath 'D:\Vichara-GenAI-Portfolio\backend'
+uv add --dev pytest pytest-asyncio pytest-cov respx fakeredis locust ruff mypy
 ~~~
 
 - [ ] **Step 3: Add GenAI and ML packages**
 
 ~~~powershell
-wsl -d Ubuntu -- bash -lc "cd /mnt/d/Vichara-GenAI-Portfolio/backend && uv add langgraph langchain-core langchain-ollama llama-index-core llama-index-embeddings-huggingface llama-index-vector-stores-faiss faiss-cpu sentence-transformers torch scikit-learn mlflow"
+Set-Location -LiteralPath 'D:\Vichara-GenAI-Portfolio\backend'
+uv add langgraph langchain-core langchain-ollama llama-index-core llama-index-embeddings-huggingface llama-index-vector-stores-faiss faiss-cpu sentence-transformers mlflow
+# torch and scikit-learn are AltSignal-only (deferred) - add them in Task 22 if that work resumes
 ~~~
 
-If Linux wheel resolution fails, stop and resolve it; do not silently swap FAISS or PyTorch out of the deliverable.
+If native Windows wheel resolution fails for any of these, stop and resolve it; do not silently swap FAISS out of the deliverable.
 
 - [ ] **Step 4: Initialize React/Vite**
 
@@ -306,7 +313,8 @@ describe("test runner", () => {
 - [ ] **Step 6: Run both test runners**
 
 ~~~powershell
-wsl -d Ubuntu -- bash -lc "cd /mnt/d/Vichara-GenAI-Portfolio/backend && uv run pytest -q"
+Set-Location -LiteralPath 'D:\Vichara-GenAI-Portfolio\backend'
+uv run pytest -q
 Set-Location -LiteralPath 'D:\Vichara-GenAI-Portfolio\frontend'
 npm run test -- --run
 ~~~
@@ -337,14 +345,15 @@ Test a pure function that turns discovered capabilities into explicit readiness 
 - [ ] **Step 2: Run and confirm failure**
 
 ~~~powershell
-wsl -d Ubuntu -- bash -lc "cd /mnt/d/Vichara-GenAI-Portfolio/backend && uv run pytest tests/unit/test_runtime.py -q"
+Set-Location -LiteralPath 'D:\Vichara-GenAI-Portfolio\backend'
+uv run pytest tests/unit/test_runtime.py -q
 ~~~
 
 Expected: import failure.
 
 - [ ] **Step 3: Implement capability reporting**
 
-Return typed results for WSL Python, D-drive writability, GPU visibility, Docker availability, Ollama availability, and API cache path.
+Return typed results for native Python, D-drive writability, GPU visibility, Docker availability, Ollama availability, and API cache path.
 
 - [ ] **Step 4: Start Docker Desktop**
 
@@ -481,7 +490,8 @@ Expected: PASS without network.
 - [ ] **Step 5: Run one explicitly marked live test**
 
 ~~~powershell
-wsl -d Ubuntu -- bash -lc "cd /mnt/d/Vichara-GenAI-Portfolio/backend && VICHARA_EXTERNAL_NETWORK_ENABLED=true uv run pytest -m live tests/contract/bondlens/test_sec_submissions.py -q"
+Set-Location -LiteralPath 'D:\Vichara-GenAI-Portfolio\backend'
+VICHARA_EXTERNAL_NETWORK_ENABLED=true uv run pytest -m live tests/contract/bondlens/test_sec_submissions.py -q
 ~~~
 
 Expected: entity name contains Benchmark 2026-B42 and at least one ABS-EE filing.
@@ -614,7 +624,9 @@ Tables: source_documents, ingestion_runs, cmbs_deals, cmbs_filings, cmbs_reporti
 - [ ] **Step 5: Run migration and tests**
 
 ~~~powershell
-wsl -d Ubuntu -- bash -lc "cd /mnt/d/Vichara-GenAI-Portfolio/backend && uv run alembic upgrade head && uv run pytest tests/integration/bondlens/test_repository.py -q"
+Set-Location -LiteralPath 'D:\Vichara-GenAI-Portfolio\backend'
+uv run alembic upgrade head
+uv run pytest tests/integration/bondlens/test_repository.py -q
 ~~~
 
 Expected: PASS and rerunning the same ingest changes no row counts.
@@ -699,7 +711,7 @@ Methods: upsert_chunks, search, delete_document, persist, load. SearchResult inc
 
 Use BAAI/bge-small-en-v1.5, cache under .cache/huggingface, normalize embeddings, and persist index plus an atomic metadata sidecar under .data/faiss.
 
-- [ ] **Step 4: Run WSL integration test**
+- [ ] **Step 4: Run native-Python integration test**
 
 Expected: a known query retrieves the matching fixture chunk in top three.
 
@@ -768,7 +780,7 @@ Start-Process -FilePath $ollamaExe -ArgumentList 'serve' -WindowStyle Hidden
 
 Expected: llama3.1:8b is present under D: and Ollama responds on localhost:11434.
 
-> **WSL cannot reach the host on `localhost`.** Ollama runs on the Windows host GPU while the dev backend runs inside WSL. Set `OLLAMA_HOST=0.0.0.0:11434` before starting the server, allow the port through Windows Firewall for the WSL subnet, and point the backend at the host IP from `/etc/resolv.conf` (or `$(hostname).local`) rather than `localhost`. The Docker path already handles this via `host.docker.internal` in Task 29; the dev path does not. If the exact tag has changed, inspect the official Ollama library and record the resolved compatible tag before changing configuration.
+> **Ollama networking (simplified by the environment revision):** the dev backend now runs natively on Windows, the same host as Ollama, so `localhost:11434` (or `127.0.0.1:11434`) works directly - the earlier WSL-to-host routing problem does not arise in dev. It still applies inside Docker Compose, which is why Task 29 uses `host.docker.internal` for the containerized path. If the exact model tag has changed, inspect the official Ollama library and record the resolved compatible tag before changing configuration.
 
 - [ ] **Step 6: Implement Ollama adapter**
 
@@ -1192,7 +1204,8 @@ Use contiguous train/validation/test partitions. Report macro-F1, balanced accur
 - [ ] **Step 4: Train**
 
 ~~~powershell
-wsl -d Ubuntu -- bash -lc "cd /mnt/d/Vichara-GenAI-Portfolio/backend && uv run python scripts/train_regime_model.py --feature-version latest --seed 42"
+Set-Location -LiteralPath 'D:\Vichara-GenAI-Portfolio\backend'
+uv run python scripts/train_regime_model.py --feature-version latest --seed 42
 ~~~
 
 - [ ] **Step 5: Inspect results honestly**
@@ -1635,7 +1648,7 @@ git commit -m "ci: verify backend frontend containers and manifests"
 
 - [ ] **Step 1: Document reproducible setup**
 
-Include exact Windows/WSL prerequisites, model size/time expectation, D-drive paths, start/stop/verify commands, ports, demo credentials creation, and troubleshooting.
+Include exact native-Windows prerequisites, model size/time expectation, D-drive paths, start/stop/verify commands, ports, demo credentials creation, and troubleshooting.
 
 - [ ] **Step 2: Document data access**
 
@@ -1688,7 +1701,10 @@ Run scripts\dev.ps1, wait through bounded readiness checks, then scripts\verify.
 - [ ] **Step 3: Run all automated tests**
 
 ~~~powershell
-wsl -d Ubuntu -- bash -lc "cd /mnt/d/Vichara-GenAI-Portfolio/backend && uv run ruff check . && uv run mypy src && uv run pytest -m 'not live' --cov=src --cov-report=term-missing"
+Set-Location -LiteralPath 'D:\Vichara-GenAI-Portfolio\backend'
+uv run ruff check .
+uv run mypy src
+uv run pytest -m 'not live' --cov=src --cov-report=term-missing
 Set-Location -LiteralPath 'D:\Vichara-GenAI-Portfolio\frontend'
 npm run lint
 npm run test -- --run
