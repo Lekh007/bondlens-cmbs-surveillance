@@ -1,0 +1,435 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --row-h: 36px;
+    --cell-px: 14px;
+    --cell-py: 8px;
+  }
+  html.compact {
+    --row-h: 26px;
+    --cell-px: 10px;
+    --cell-py: 4px;
+  }
+
+  body {
+    @apply bg-bg text-text-hi font-sans antialiased;
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 999px;
+    border: 2px solid #f8fafc;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+}
+
+@layer components {
+  /* ============================== Number formatting ============================== */
+  .num {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+    letter-spacing: -0.01em;
+  }
+
+  /* ============================== Data table ============================== */
+  table.vt {
+    @apply w-full text-[13px];
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  table.vt thead th {
+    @apply sticky top-0 z-10 text-left text-2xs font-semibold uppercase tracking-wider text-text-md whitespace-nowrap;
+    background: #f1f5f9;
+    padding: 8px var(--cell-px);
+    border-bottom: 1px solid #cbd5e1;
+  }
+  table.vt thead th.num,
+  table.vt tbody td.num,
+  table.vt tfoot td.num {
+    text-align: right;
+  }
+  table.vt tbody td {
+    padding: var(--cell-py) var(--cell-px);
+    border-bottom: 1px solid #f1f5f9;
+    height: var(--row-h);
+    @apply text-text-hi align-middle;
+  }
+  table.vt tbody tr:nth-child(even) td {
+    background: rgba(241, 245, 249, 0.55);
+  }
+  table.vt tbody tr:hover td {
+    background: rgba(37, 99, 235, 0.06);
+  }
+  table.vt tbody tr.group-row td {
+    background: linear-gradient(90deg, #1e3a8a 0%, #2a4d8f 100%);
+    color: #ffffff;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid #1e40af;
+  }
+  table.vt tbody tr.group-row:hover td {
+    background: linear-gradient(90deg, #1e40af 0%, #2563eb 100%);
+  }
+  table.vt tfoot td {
+    @apply font-semibold;
+    padding: 10px var(--cell-px);
+    border-top: 2px solid #cbd5e1;
+    background: #f8fafc;
+  }
+  table.vt .link {
+    @apply text-link cursor-pointer;
+  }
+  table.vt .link:hover {
+    text-decoration: underline;
+  }
+  table.vt .muted {
+    @apply text-text-lo;
+  }
+
+  /* ============================== Percent micro-bar inside cell ============================== */
+  .pct-cell {
+    position: relative;
+  }
+  .pct-cell::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--pct, 0%);
+    background: #2563eb;
+    opacity: 0.1;
+    pointer-events: none;
+  }
+  .pct-cell > span {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ============================== Card ============================== */
+  .card {
+    @apply bg-surface border border-border-l rounded-[10px] overflow-hidden shadow-card;
+  }
+  .card-hdr {
+    @apply flex items-center justify-between;
+    background: linear-gradient(90deg, #1e3a8a 0%, #2a4d8f 100%);
+    color: #ffffff;
+    padding: 12px 18px;
+    border-bottom: 1px solid #1e40af;
+  }
+  .card-hdr .card-title {
+    @apply text-[14px] font-semibold text-white tracking-tight;
+  }
+  .card-hdr .card-sub {
+    @apply text-[12px] mt-0.5;
+    color: #cbd5e1;
+  }
+  .card-actions {
+    @apply flex items-center gap-1;
+  }
+  .card-action-btn {
+    @apply inline-flex items-center justify-center cursor-pointer rounded;
+    width: 26px;
+    height: 26px;
+    color: #cbd5e1;
+    transition: background 120ms, color 120ms;
+  }
+  .card-action-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+  }
+
+  /* ============================== Pill ============================== */
+  .pill {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium leading-snug;
+  }
+  .pill-gain { @apply bg-gain-tint text-gain; }
+  .pill-loss { @apply bg-loss-tint text-loss; }
+  .pill-warn { @apply bg-warn-tint text-warn; }
+  .pill-info { @apply bg-info-tint text-info; }
+  .pill-neutral { @apply bg-neutral-tint text-neutral; }
+  .pill-brand { @apply bg-link-tint text-navy; }
+
+  /* ============================== Topbar ============================== */
+  .topbar {
+    @apply h-[54px] flex items-center px-5 gap-4 sticky top-0 z-50 border-b border-border-l;
+    background: linear-gradient(90deg, #172554 0%, #1e3a8a 100%);
+    color: #ffffff;
+  }
+  .topbar-divider {
+    width: 1px;
+    align-self: stretch;
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  /* ============================== Tab bar ============================== */
+  .tabbar {
+    @apply h-[42px] flex items-stretch px-5 gap-0.5 sticky z-40 border-b border-border-l;
+    top: 54px;
+    background: #ffffff;
+  }
+  .tab {
+    @apply inline-flex items-center px-3.5 text-[13px] font-medium text-text-md cursor-pointer select-none;
+    border-bottom: 2px solid transparent;
+    transition: color 120ms, border-color 120ms;
+  }
+  .tab:hover { @apply text-text-hi; }
+  .tab.active {
+    @apply text-navy font-semibold;
+    border-bottom-color: #1e3a8a;
+  }
+  .tab.disabled {
+    @apply text-text-lo cursor-not-allowed;
+  }
+  .tab .soon {
+    @apply ml-1.5 text-[9px] font-semibold uppercase tracking-wider bg-zebra text-text-lo rounded-full px-1.5 py-px;
+  }
+
+  /* ============================== Sidebar ============================== */
+  .sidebar {
+    @apply bg-surface border-r border-border-l py-4 px-3 flex-shrink-0 overflow-y-auto;
+    width: 240px;
+    position: sticky;
+    top: 96px;
+    height: calc(100vh - 96px);
+  }
+  .nav-item {
+    @apply flex items-center gap-2.5 px-2.5 py-2 rounded-md text-[13px] text-text-md cursor-pointer no-underline;
+    transition: background 120ms, color 120ms;
+  }
+  .nav-item:hover { @apply bg-zebra text-text-hi; }
+  .nav-item.active {
+    @apply bg-link-tint text-navy font-semibold;
+  }
+  .nav-item.disabled {
+    @apply opacity-60 cursor-not-allowed;
+  }
+  .nav-anchor {
+    @apply flex items-center text-[12px] text-text-md cursor-pointer rounded-md ml-2.5 py-1 px-2.5;
+    padding-left: 36px;
+    border-left: 2px solid transparent;
+    transition: color 120ms, background 120ms, border-color 120ms;
+  }
+  .nav-anchor:hover { @apply bg-zebra text-text-hi; }
+  .nav-anchor.active {
+    @apply text-navy font-medium;
+    border-left-color: #1e3a8a;
+  }
+
+  /* ============================== KPI card ============================== */
+  .kpi {
+    @apply bg-surface border border-border-l rounded-[10px] px-4 py-3 flex flex-col justify-between;
+    min-height: 92px;
+    transition: border-color 150ms, box-shadow 150ms;
+  }
+  .kpi:hover {
+    @apply border-border-m shadow-card-hov;
+  }
+  .kpi-label {
+    @apply text-2xs uppercase tracking-wider text-text-md font-semibold;
+  }
+  .kpi-value {
+    @apply text-[22px] font-semibold text-text-hi tracking-tight leading-none mt-1;
+  }
+  .kpi-foot {
+    @apply flex items-center justify-between mt-1.5;
+  }
+
+  /* ============================== Buttons ============================== */
+  .btn {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px] font-medium cursor-pointer;
+    transition: background 120ms, border-color 120ms, color 120ms;
+    border: 1px solid transparent;
+  }
+  .btn-primary {
+    background: #ffffff;
+    color: #1e3a8a;
+  }
+  .btn-primary:hover {
+    background: #f8fafc;
+  }
+  .btn-ghost-top {
+    color: rgba(255,255,255,0.9);
+    border-color: rgba(255,255,255,0.2);
+    background: transparent;
+  }
+  .btn-ghost-top:hover {
+    background: rgba(255,255,255,0.08);
+    color: #ffffff;
+  }
+  .btn-ghost {
+    @apply text-text-md border-border-l bg-surface;
+  }
+  .btn-ghost:hover {
+    @apply text-text-hi border-border-m;
+  }
+
+  /* ============================== Density segmented control ============================== */
+  .seg {
+    @apply inline-flex border border-white/20 rounded-md overflow-hidden;
+    background: rgba(255,255,255,0.08);
+  }
+  .seg button {
+    @apply px-2.5 py-1 text-[12px];
+    color: rgba(255,255,255,0.8);
+    border-right: 1px solid rgba(255,255,255,0.15);
+  }
+  .seg button:last-child { border-right: none; }
+  .seg button.active {
+    background: #ffffff;
+    color: #1e3a8a;
+    font-weight: 600;
+  }
+
+  .seg-mini {
+    @apply inline-flex border border-border-l rounded-md overflow-hidden bg-surface;
+  }
+  .seg-mini button {
+    @apply px-2.5 py-1 text-[12px] text-text-md;
+    border-right: 1px solid #e2e8f0;
+  }
+  .seg-mini button:last-child { border-right: none; }
+  .seg-mini button.active {
+    @apply bg-navy text-white font-semibold;
+  }
+
+  /* ============================== Deal selector / freshness ============================== */
+  .deal-selector {
+    @apply inline-flex items-center gap-2 px-2.5 py-1.5 rounded-md cursor-pointer text-[13px] font-medium;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.18);
+    color: #ffffff;
+    transition: background 120ms, border-color 120ms;
+  }
+  .deal-selector:hover {
+    background: rgba(255,255,255,0.14);
+    border-color: rgba(255,255,255,0.3);
+  }
+  .freshness {
+    @apply inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11.5px];
+    background: rgba(254,243,199,0.15);
+    color: #fde68a;
+    border: 1px solid rgba(254,243,199,0.3);
+  }
+  .input-date {
+    @apply rounded-md px-2.5 py-1 text-[12.5px] num;
+    width: 110px;
+    background: rgba(255,255,255,0.08);
+    color: #ffffff;
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  .input-date:focus {
+    outline: none;
+    background: rgba(255,255,255,0.18);
+    border-color: rgba(255,255,255,0.4);
+  }
+
+  /* ============================== Scenario list ============================== */
+  .scn-group-hdr {
+    @apply flex items-center justify-between px-3 py-2 text-2xs uppercase tracking-wider font-semibold text-text-md sticky top-0 z-10;
+    background: #f1f5f9;
+    border-top: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .scn-row {
+    @apply grid items-center px-3 py-1.5 text-[12.5px] cursor-pointer;
+    grid-template-columns: 22px 1fr 64px 64px;
+    gap: 8px;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .scn-row:hover { background: rgba(37, 99, 235, 0.05); }
+  .scn-row.selected { background: #eff6ff; }
+  .scn-row .pctn {
+    @apply text-right num;
+  }
+
+  /* ============================== Chat panel ============================== */
+  .chat-launcher {
+    @apply fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-full text-white font-semibold text-[13px] cursor-pointer;
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+    box-shadow: 0 10px 24px rgba(37, 99, 235, 0.35);
+    transition: transform 150ms, box-shadow 150ms;
+  }
+  .chat-launcher:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 28px rgba(37, 99, 235, 0.45);
+  }
+
+  .chat-panel {
+    @apply fixed top-0 right-0 z-50 h-screen bg-surface border-l border-border-l flex flex-col;
+    width: 420px;
+    box-shadow: -8px 0 24px rgba(15,23,42,0.10);
+  }
+  .chat-header {
+    @apply flex items-center justify-between p-4 border-b border-border-l;
+    background: linear-gradient(90deg, #1e3a8a 0%, #2a4d8f 100%);
+    color: #ffffff;
+  }
+  .chat-suggested {
+    @apply flex flex-wrap gap-2 p-3 border-b border-border-l;
+    background: #f8fafc;
+  }
+  .chat-suggest-chip {
+    @apply px-2.5 py-1 rounded-full text-[11.5px] cursor-pointer border;
+    background: #ffffff;
+    color: #1e3a8a;
+    border-color: #cbd5e1;
+    transition: background 120ms, border-color 120ms;
+  }
+  .chat-suggest-chip:hover {
+    background: #eff6ff;
+    border-color: #2563eb;
+  }
+  .chat-bubble-user {
+    @apply self-end max-w-[88%] rounded-2xl rounded-br-md px-3.5 py-2 text-[13px];
+    background: #1e3a8a;
+    color: #ffffff;
+  }
+  .chat-bubble-ai {
+    @apply self-start max-w-[92%] rounded-2xl rounded-bl-md px-3.5 py-2 text-[13px] text-text-hi;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+  }
+  .chat-input {
+    @apply flex items-center gap-2 p-3 border-t border-border-l;
+  }
+  .chat-input input {
+    @apply flex-1 px-3 py-2 rounded-md text-[13px] border;
+    border-color: #cbd5e1;
+  }
+  .chat-input input:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  }
+
+  /* ============================== Toast ============================== */
+  .toast {
+    @apply fixed bottom-6 left-6 z-[100] flex items-center gap-2 px-3.5 py-2.5 rounded-md text-[13px] font-medium text-white;
+    background: #0f172a;
+    box-shadow: 0 8px 24px rgba(15,23,42,0.18);
+    pointer-events: none;
+  }
+
+  /* ============================== Misc ============================== */
+  [data-lucide] {
+    width: 16px;
+    height: 16px;
+    stroke-width: 1.5;
+  }
+}
