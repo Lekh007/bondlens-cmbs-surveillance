@@ -1,0 +1,51 @@
+# ---- secrets -------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# ---- local data, models, caches (never committed) ------------------------
+.data/
+.models/
+.cache/
+!backend/tests/fixtures/**
+
+# ---- python --------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+
+# ---- mlflow / n8n / grafana state ---------------------------------------
+mlruns/
+mlartifacts/
+.n8n/
+grafana-storage/
+
+# ---- node / frontend -----------------------------------------------------
+node_modules/
+frontend/dist/
+frontend/coverage/
+*.tsbuildinfo
+.vite/
+
+# ---- playwright ----------------------------------------------------------
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+
+# ---- editors / os --------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
