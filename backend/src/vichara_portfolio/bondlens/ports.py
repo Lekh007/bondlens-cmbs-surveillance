@@ -11,7 +11,11 @@ from vichara_portfolio.bondlens.domain import Deal, ParsedAssetData, SecFiling, 
 from vichara_portfolio.shared.provenance import SourceRef
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
+    from vichara_portfolio.bondlens.adapters.faiss_index import SearchResult
     from vichara_portfolio.bondlens.adapters.filing_store import FilingDocument
+    from vichara_portfolio.bondlens.rag import Chunk
     from vichara_portfolio.shared.storage import StoredDocument
 
 
@@ -45,3 +49,17 @@ class RepositoryPort(Protocol):
     def save_parsed_asset_data(
         self, *, accession_number: str, parsed: ParsedAssetData, source_document_id: int | None
     ) -> tuple[int, int]: ...
+
+
+class VectorIndexPort(Protocol):
+    def upsert_chunks(
+        self, chunks: tuple[Chunk, ...], *, source_by_accession: dict[str, SourceRef]
+    ) -> None: ...
+
+    def search(self, query: str, *, top_k: int = 5) -> tuple[SearchResult, ...]: ...
+
+    def delete_document(self, accession_number: str) -> int: ...
+
+    def persist(self, path: Path) -> None: ...
+
+    def load(self, path: Path) -> None: ...
