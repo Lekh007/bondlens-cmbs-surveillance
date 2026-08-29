@@ -192,6 +192,40 @@ def test_verify_passes_trivially_with_no_evidence_and_no_draft() -> None:
     assert result["verification_errors"] == []
 
 
+def test_verify_flags_an_invented_loan_reference() -> None:
+    """Regression test for a real bug (2026-08-29, found by an external
+    review of the running UI): the model returned invented `loan_1` /
+    `loan_2` references and the answer was marked verification_passed,
+    because the numeric check only validates number tokens - and the digit
+    '1' does appear somewhere in evidence, so nothing flagged it."""
+    state = {
+        "draft": "Loan 30 went delinquent, and loan_87 also defaulted.",
+        "tool_evidence": [
+            ToolEvidence("rank_loans_by_status_change", "loan 30: status 0 -> B", (_source("x"),))
+        ],
+        "retrieved_chunks": [],
+    }
+    result = verify_node(state)
+    assert any("loans not present in evidence" in e for e in result["verification_errors"])
+    assert "87" in " ".join(result["verification_errors"])
+
+
+def test_verify_accepts_loan_references_that_are_in_evidence() -> None:
+    state = {
+        "draft": "Loan 30 went delinquent while loan 16 cured.",
+        "tool_evidence": [
+            ToolEvidence(
+                "rank_loans_by_status_change",
+                "loan 30: status 0 -> B; loan 16: status B -> 0",
+                (_source("x"),),
+            )
+        ],
+        "retrieved_chunks": [],
+    }
+    result = verify_node(state)
+    assert not any("loans not present" in e for e in result["verification_errors"])
+
+
 def test_verify_flags_a_degenerate_repetitive_draft() -> None:
     """Regression test for a real bug (2026-08-29, live Ollama testing on
     the flagship two-tool question): a degenerate greedy-decoding loop
@@ -203,9 +237,7 @@ def test_verify_flags_a_degenerate_repetitive_draft() -> None:
     state = {
         "draft": gibberish,
         "tool_evidence": [
-            ToolEvidence(
-                "rank_loans_by_status_change", "loan 30: status 0 -> B", (_source("x"),)
-            )
+            ToolEvidence("rank_loans_by_status_change", "loan 30: status 0 -> B", (_source("x"),))
         ],
         "retrieved_chunks": [],
     }
@@ -240,22 +272,52 @@ def test_verify_does_not_flag_normal_length_narrative_prose() -> None:
     assert not any("repetitive" in e or "degenerate" in e for e in result["verification_errors"])
 
 
-def test_balance_drift_evidence_is_capped_to_top_movers(july_loans) -> None:
-    """Regression test for a real finding: rendering all ~62 loans' drift
-    lines produced a 3,240-token prompt that blew past the model's timeout.
-    Evidence must be capped to the top movers, not a full dump."""
-    from vichara_portfolio.bondlens.agent import (
-        _MAX_RANKING_ENTRIES_RENDERED,
-        make_execute_tools_node,
-    )
+def test_balance_drift_evidence_states_the_fact_when_nothing_drifted(july_loans) -> None:
+    """On this real deal every loan sits exactly on its amortization
+    schedule. The evidence must say that once, in words - not print ten
+    identical 'actual X vs scheduled X (drift 0)' rows, which communicates
+    nothing while burying the one fact that matters. Regression test for a
+    real bug (2026-08-29): the noisy rendering was a direct cause of a 100%
+    model-fallback rate."""
+    from vichara_portfolio.bondlens.agent import make_execute_tools_node
 
     node = make_execute_tools_node(deal=DEAL, loans_b=july_loans)
     state = node({"question": "x", "planned_tools": ["rank_loans_by_balance_drift"]})
 
-    evidence = state["tool_evidence"][0]
-    rendered_loan_count = evidence.rendered.count("loan ")
-    assert rendered_loan_count <= _MAX_RANKING_ENTRIES_RENDERED
-    assert "top 10 of" in evidence.rendered
+    rendered = state["tool_evidence"][0].rendered
+    assert "no loan diverged from its amortization schedule" in rendered
+    assert "62 loans" in rendered
+    assert "0E-8" not in rendered  # Decimal scientific notation must never reach a prompt
+
+
+def test_evidence_renders_money_readably_not_as_raw_decimals(july_loans) -> None:
+    """The raw ABS-EE values carry 8 decimal places. A model cannot narrate
+    '728470251.29000000', and any natural rewriting used to be rejected by
+    the numeric verifier - the trap that made a passing draft unreachable."""
+    from vichara_portfolio.bondlens.agent import make_execute_tools_node
+
+    node = make_execute_tools_node(deal=DEAL, loans_b=july_loans, filing_source=_source("july"))
+    state = node({"question": "deal summary", "planned_tools": ["get_deal_summary"]})
+
+    rendered = state["tool_evidence"][0].rendered
+    assert "$728,470,251.29" in rendered
+    assert "728470251.29000000" not in rendered
+
+
+def test_verifier_accepts_a_number_the_model_reformatted_readably(july_loans) -> None:
+    """The other half of the same fix: evidence says '$728,470,251.29', and
+    a draft writing '728,470,251.29' (or '$728,470,251.29') must not be
+    flagged as an unsupported number."""
+    from vichara_portfolio.bondlens.agent import find_unsupported_numbers, make_execute_tools_node
+
+    node = make_execute_tools_node(deal=DEAL, loans_b=july_loans, filing_source=_source("july"))
+    state = node({"question": "deal summary", "planned_tools": ["get_deal_summary"]})
+
+    assert find_unsupported_numbers("Total actual balance is 728,470,251.29.", state) == ()
+    assert find_unsupported_numbers("Total actual balance is $728,470,251.29.", state) == ()
+    assert find_unsupported_numbers("The deal holds 62 loans.", state) == ()
+    # A genuinely invented figure is still caught.
+    assert find_unsupported_numbers("Total actual balance is $999,999,999.99.", state) != ()
 
 
 # --------------------------------------------------------------------------

@@ -20,6 +20,7 @@ correctness gating) is never delegated to an LLM.
 
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -92,6 +93,23 @@ def _is_valid_citation_url(url: str) -> bool:
     return url.startswith(_VALID_CITATION_URL_PREFIXES)
 
 
+_PLURAL_ENTITY_PATTERN = re.compile(r"\b(loan|propert)(?:s|ies)\b", re.IGNORECASE)
+
+
+def _normalize_for_fact_match(text: str) -> str:
+    """Lowercase, and singularize the entity nouns a golden fact names.
+
+    A fact like "loan 30" is genuinely present in "Loans 30 and 16 changed
+    payment status" - the model listed two loans in one clause, which is
+    good writing, not a missing fact. Without this the check failed a
+    correct answer on grammar (measured 2026-08-29). It only collapses
+    plural forms; "loan" must still sit adjacent to "30" for the fact to
+    count, so the check is not weakened."""
+    return _PLURAL_ENTITY_PATTERN.sub(
+        lambda m: "property" if m.group(1).lower() == "propert" else m.group(1), text
+    ).lower()
+
+
 def evaluate_question(
     *,
     invoke: Callable[[str], AgentState],
@@ -107,8 +125,12 @@ def evaluate_question(
     tool_routing_correct = set(actual_tools) == set(case.expected_tools)
 
     final_answer = str(result.get("final_answer", ""))
-    answer_lower = final_answer.lower()
-    missing_facts = tuple(fact for fact in case.expected_facts if fact.lower() not in answer_lower)
+    answer_normalized = _normalize_for_fact_match(final_answer)
+    missing_facts = tuple(
+        fact
+        for fact in case.expected_facts
+        if _normalize_for_fact_match(fact) not in answer_normalized
+    )
     facts_covered = len(missing_facts) == 0
 
     # Re-checked against the actual delivered final_answer, not
@@ -232,10 +254,13 @@ def evaluate_golden_set(
         source_url_validity_rate=source_url_validity_rate,
         retrieval_recall_at_k=None,
         retrieval_recall_note=(
-            "Not applicable to this golden set: every question is answered by "
-            "deterministic loan/property tools, not narrative-filing retrieval. "
-            "BondLens's ingested corpus is ABS-EE asset data, not 8-K/10-D "
-            "narrative text, so no golden question exercises the retrieval path."
+            "Not measured by this golden set: all five questions are answered by "
+            "deterministic loan/property tools, so none routes through narrative "
+            "retrieval. The retrieval path itself is live in the product - ingestion "
+            "indexes this deal's 10-D and 8-K filings into FAISS and the chat "
+            "endpoint passes that index to the agent - but recall@k is only "
+            "meaningful against a labelled narrative question set, which this "
+            "golden set is not. Reported as unmeasured rather than as a number."
         ),
         total_unsupported_claims=total_unsupported_claims,
         average_latency_seconds=average_latency_seconds,

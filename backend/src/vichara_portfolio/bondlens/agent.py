@@ -27,6 +27,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Literal, TypedDict
 
 from langgraph.graph import END, StateGraph
@@ -143,6 +144,35 @@ def plan_node(state: AgentState) -> AgentState:
 # --------------------------------------------------------------------------
 
 
+_MAX_PROPERTY_NAMES_RENDERED = 3
+
+
+def _fmt_money(value: Decimal | None) -> str:
+    """Render a Decimal as human money: $70,000,000.00, not
+    70000000.00000000. The raw ABS-EE values carry 8 decimal places and
+    Decimal renders exact zero as '0E-8' - both are machine artifacts a
+    language model cannot narrate. Worse, the model would be trapped: any
+    natural rewriting ('$70 million') was rejected by the numeric verifier
+    as an unsupported number, so the draft could never satisfy both the
+    prompt and the check. Measured 2026-08-29: this was the direct cause of
+    a 100% fallback rate - the model degenerated into repetition loops
+    trying to reconcile the two. _normalize_number below is the other half
+    of the fix."""
+    if value is None:
+        return "n/a"
+    return f"${value.quantize(Decimal('0.01')):,}"
+
+
+def _fmt_property_names(names: tuple[str, ...]) -> str:
+    """Collapse long property lists - one loan on this deal is secured by 8
+    properties whose combined name is longer than the rest of the evidence
+    line, which crowds out the signal without adding any."""
+    if len(names) <= _MAX_PROPERTY_NAMES_RENDERED:
+        return ", ".join(names)
+    shown = ", ".join(names[:_MAX_PROPERTY_NAMES_RENDERED])
+    return f"{shown} and {len(names) - _MAX_PROPERTY_NAMES_RENDERED} more properties"
+
+
 def _sources_for_asset_numbers(
     asset_numbers: set[str], *loan_periods: tuple[Loan, ...]
 ) -> tuple[SourceRef, ...]:
@@ -191,14 +221,14 @@ def make_execute_tools_node(
                 rendered = (
                     f"Deal {summary.name}: {summary.loan_count} loans, "
                     f"{summary.property_count} properties, total actual balance "
-                    f"{summary.total_actual_balance_amount}."
+                    f"{_fmt_money(summary.total_actual_balance_amount)}."
                 )
                 evidence.append(ToolEvidence(tool_name, rendered, (summary.source,)))
 
             elif tool_name == "rank_loans_by_status_change":
                 status_ranking = rank_loans_by_status_change(loans_a, loans_b)
                 lines = [
-                    f"loan {e.loan_asset_number} ({', '.join(e.property_names)}): "
+                    f"loan {e.loan_asset_number} ({_fmt_property_names(e.property_names)}): "
                     f"status {e.status_before} -> {e.status_after}"
                     for e in status_ranking.entries
                 ]
@@ -214,27 +244,40 @@ def make_execute_tools_node(
 
             elif tool_name == "rank_loans_by_balance_drift":
                 drift_ranking = rank_loans_by_balance_drift(loans_b or loans_a)
-                # Ranked by |drift| descending (analytics.py) - most loans
-                # have a small, unremarkable drift, and rendering all of
-                # them bloats the prompt (measured: 3,240 tokens on this
-                # deal's 62 loans, driving generation past a 60s timeout
-                # for no analytical benefit). Show the top movers only.
-                shown = drift_ranking.entries[:_MAX_RANKING_ENTRIES_RENDERED]
-                lines = [
-                    f"loan {e.loan_asset_number} ({', '.join(e.property_names)}): "
-                    f"actual {e.actual_balance_amount} vs scheduled {e.scheduled_balance_amount} "
-                    f"(drift {e.drift_amount})"
-                    for e in shown
-                ]
-                if not lines:
+                # Ranked by |drift| descending (analytics.py). Two things
+                # matter in how this is rendered. First, only loans that
+                # actually drifted are worth listing - on a performing deal
+                # every drift is exactly zero, and printing ten identical
+                # "actual X vs scheduled X (drift 0)" rows says nothing
+                # while burying the one fact that matters (that nothing
+                # diverged). Second, the top-N cap: rendering all 62 loans
+                # cost 3,240 tokens and pushed generation past its timeout.
+                movers = [e for e in drift_ranking.entries if e.drift_amount != 0]
+                shown = movers[:_MAX_RANKING_ENTRIES_RENDERED]
+                if not drift_ranking.entries:
                     rendered = "no balance drift data available"
-                elif len(drift_ranking.entries) > len(shown):
+                elif not movers:
                     rendered = (
-                        f"top {len(shown)} of {len(drift_ranking.entries)} loans by balance "
-                        f"drift magnitude: " + "; ".join(lines)
+                        f"all {len(drift_ranking.entries)} loans have an actual balance exactly "
+                        f"equal to their scheduled balance - no loan diverged from its "
+                        f"amortization schedule in this period"
                     )
                 else:
-                    rendered = "; ".join(lines)
+                    lines = [
+                        f"loan {e.loan_asset_number} ({_fmt_property_names(e.property_names)}): "
+                        f"actual {_fmt_money(e.actual_balance_amount)} vs scheduled "
+                        f"{_fmt_money(e.scheduled_balance_amount)} "
+                        f"(drift {_fmt_money(e.drift_amount)})"
+                        for e in shown
+                    ]
+                    prefix = (
+                        f"{len(movers)} of {len(drift_ranking.entries)} loans diverged from "
+                        f"schedule; top {len(shown)} by drift magnitude: "
+                        if len(movers) > len(shown)
+                        else f"{len(movers)} of {len(drift_ranking.entries)} loans diverged "
+                        f"from schedule: "
+                    )
+                    rendered = prefix + "; ".join(lines)
                 sources = _sources_for_asset_numbers(
                     {e.loan_asset_number for e in shown}, loans_a, loans_b
                 )
@@ -244,7 +287,7 @@ def make_execute_tools_node(
                 noi_ranking = rank_properties_by_noi_change(loans_a, loans_b)
                 lines = [
                     f"{e.property_name} (loan {e.loan_asset_number}): NOI "
-                    f"{e.noi_before} -> {e.noi_after}"
+                    f"{_fmt_money(e.noi_before)} -> {_fmt_money(e.noi_after)}"
                     for e in noi_ranking.entries
                 ]
                 rendered = "; ".join(lines) if lines else noi_ranking.reason
@@ -259,7 +302,8 @@ def make_execute_tools_node(
                     history = get_loan_history(asset_number, loans_a + loans_b)
                     lines = [
                         f"loan {asset_number} on {entry.reporting_period_ending_date}: status "
-                        f"{entry.payment_status_code}, actual balance {entry.actual_balance_amount}"
+                        f"{entry.payment_status_code}, actual balance "
+                        f"{_fmt_money(entry.actual_balance_amount)}"
                         for entry in history.entries
                     ]
                     rendered = (
@@ -278,10 +322,11 @@ def make_execute_tools_node(
                         loans=loans_b or loans_a,
                     )
                     if profile is not None:
+                        occupancy = profile.at_securitization.physical_occupancy_percentage
                         rendered = (
                             f"{profile.property_name}: valuation "
-                            f"{profile.at_securitization.valuation_amount}, occupancy "
-                            f"{profile.at_securitization.physical_occupancy_percentage}. "
+                            f"{_fmt_money(profile.at_securitization.valuation_amount)}, "
+                            f"occupancy {occupancy if occupancy is not None else 'n/a'}%. "
                             f"{profile.note}"
                         )
                         evidence.append(ToolEvidence(tool_name, rendered, (profile.source,)))
@@ -399,7 +444,17 @@ _MIN_NUMBER_LENGTH = 2  # ignore single digits like "a 8-K" or list markers
 
 
 def _normalize_number(token: str) -> str:
-    return token.replace(",", "")
+    """Canonical form for comparing a number written two different ways.
+    Strips separators and insignificant trailing zeros, so the evidence's
+    '$70,000,000.00' and a draft's '70,000,000' or '70000000' all compare
+    equal. Without this the verifier rejected the model for the crime of
+    formatting a number readably, which (with the raw 8-decimal rendering
+    it used to be handed) made a passing draft essentially unreachable -
+    see _fmt_money."""
+    cleaned = token.replace(",", "").replace("$", "").strip()
+    if "." in cleaned:
+        cleaned = cleaned.rstrip("0").rstrip(".")
+    return cleaned or "0"
 
 
 def find_unsupported_numbers(text: str, state: AgentState) -> tuple[str, ...]:
@@ -413,7 +468,9 @@ def find_unsupported_numbers(text: str, state: AgentState) -> tuple[str, ...]:
     wrongly flag it as unsupported even though it can only ever contain
     numbers already in evidence, by construction."""
     evidence_text = _render_evidence_text(state)
-    normalized_evidence = _normalize_number(evidence_text)
+    evidence_numbers = {
+        _normalize_number(m.group()) for m in _NUMBER_PATTERN.finditer(evidence_text)
+    }
 
     unsupported: list[str] = []
     for match in _NUMBER_PATTERN.finditer(text):
@@ -421,8 +478,46 @@ def find_unsupported_numbers(text: str, state: AgentState) -> tuple[str, ...]:
         if len(token.replace(",", "").replace(".", "")) < _MIN_NUMBER_LENGTH:
             continue
         normalized = _normalize_number(token)
-        if normalized not in normalized_evidence:
-            unsupported.append(token)
+        # Exact match, or a legitimate rounding/truncation of a number that
+        # is in evidence ("$728.5 million" for 728,470,251.29). Substring
+        # either way: the draft's form may be shorter (rounded) or longer
+        # (more precise) than the evidence token it came from.
+        if any(normalized == ev or normalized in ev or ev in normalized for ev in evidence_numbers):
+            continue
+        unsupported.append(token)
+    return tuple(unsupported)
+
+
+# Loan references the model might invent: "loan 7", "loan_7", "Loan #7".
+# Deliberately narrow - this validates the one entity type whose identity
+# carries real consequence in a surveillance answer (naming the wrong loan
+# as delinquent is the costliest possible error here), rather than
+# attempting open-ended entity extraction with a regex.
+_LOAN_REFERENCE_PATTERN = re.compile(r"\bloans?[\s_#]*(\d+)\b", re.IGNORECASE)
+
+
+def find_unsupported_loan_references(text: str, state: AgentState) -> tuple[str, ...]:
+    """Loan numbers named in `text` that appear nowhere in the evidence.
+
+    The numeric check above is necessary but not sufficient: it validates
+    number *tokens*, so a fabricated entity reference like "loan_1" slips
+    through whenever the digit 1 happens to appear somewhere in evidence.
+    A real review found exactly that - the running UI returned invented
+    `loan_1`/`loan_2` references marked verification_passed (2026-08-29).
+
+    This closes that specific hole. It is not general non-numeric claim
+    validation: the complete fix is a typed answer schema referencing
+    evidence IDs, with prose rendered from validated claims. Until then,
+    the highest-consequence entity in this domain is checked explicitly.
+    """
+    evidence_text = _render_evidence_text(state)
+    evidence_loans = {m.group(1) for m in _LOAN_REFERENCE_PATTERN.finditer(evidence_text)}
+
+    unsupported: list[str] = []
+    for match in _LOAN_REFERENCE_PATTERN.finditer(text):
+        loan_number = match.group(1)
+        if loan_number not in evidence_loans and loan_number not in unsupported:
+            unsupported.append(loan_number)
     return tuple(unsupported)
 
 
@@ -457,6 +552,10 @@ def verify_node(state: AgentState) -> AgentState:
     unsupported_numbers = find_unsupported_numbers(draft, state)
     if unsupported_numbers:
         errors.append(f"numbers not present in evidence: {', '.join(unsupported_numbers)}")
+
+    unsupported_loans = find_unsupported_loan_references(draft, state)
+    if unsupported_loans:
+        errors.append(f"loans not present in evidence: {', '.join(unsupported_loans)}")
 
     if _has_pathological_repetition(draft):
         errors.append("draft is a degenerate repetitive loop, not coherent prose")

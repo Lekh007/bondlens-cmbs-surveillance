@@ -387,6 +387,11 @@ def chat(body: ChatRequest, request: Request) -> ChatResponse:
         loans_a=entry.loans_a,
         loans_b=entry.loans_b,
         filing_source=entry.filing_source,
+        # The narrative FAISS index built during ingestion. Omitting this
+        # was a real bug: retrieval was implemented, unit-tested, and
+        # completely inert in the running product because the graph was
+        # built without it (found by review, 2026-08-29).
+        vector_index=entry.vector_index,
     )
     result = graph.invoke({"question": body.question}, config={"recursion_limit": 10})
 

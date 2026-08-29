@@ -5,25 +5,26 @@ surveillance, built directly on real SEC EDGAR regulatory filings. Every number 
 is computed by deterministic Python, never by the language model — the model's only job is
 to explain what the tools found and cite exactly where each fact came from.
 
-It runs entirely on one workstation: local LLM inference (Ollama), local Postgres/Redis, and
-a FAISS vector-search adapter that exists and is unit-tested but is **not yet wired into the
-running chat endpoint** (see [Known gaps](#known-gaps-not-yet-fixed) below). No paid API key
-anywhere in the stack.
+It runs entirely on one workstation: local LLM inference (Ollama), local vector search over
+real SEC narrative filings (FAISS + `bge-small-en-v1.5`), local Postgres/Redis. No paid API
+key anywhere in the stack.
 
-**Status: the deterministic layer is solid; the narrative layer is not yet reliable.**
-The [golden-question evaluation](docs/demo/bondlens-golden-questions.md) gate passes 5/5
-against the real installed model and real filing data — but "G1: PASSED" currently means
-*the safety net never let an ungrounded answer through*, not that the model successfully
-wrote 5 narrative answers. Measured 2026-08-29, three separate live runs: **100% of
-delivered answers used the deterministic refusal fallback** (raw tool evidence, not model
-prose) — `llama3.1:8b` at this quantization has not yet produced a single accepted
-narrative for these evidence-heavy prompts within the one-retry budget. Every number and
-every citation in every one of those fallback answers is still real and traceable (SEC
-URLs are now live-HTTP-verified as part of the evaluation, not just prefix-matched) — the
-open problem is the model's drafting reliability, not the grounding. See [Known
-gaps](#known-gaps-not-yet-fixed) and [Real bugs found by testing against real
-things](#real-bugs-found-by-testing-against-real-things) below for the full, unfiltered
-picture, including gaps a first pass at this README understated.
+**Status: working end to end.** Against the real installed model
+(`llama3.1:8b`, 4-bit) and real SEC data, the
+[golden-question evaluation](docs/demo/bondlens-golden-questions.md) gate passes **5/5 with
+genuine model-written narrative answers** — 0% fallback rate, no verification errors, no
+repair attempts needed. Every number in every answer traces to deterministic tool output,
+and every citation is a real `sec.gov` URL that is **live-HTTP-verified during the
+evaluation itself**, not merely prefix-matched.
+
+Getting there meant fixing a real failure the first evaluation runs hid: the model was
+being handed raw machine values (`70000000.00000000`, `drift 0E-8`) and then rejected by the
+numeric verifier whenever it rewrote them readably — an impossible position that drove it
+into degenerate repetition loops and a **100% fallback rate**. The fix was to render
+evidence as human-readable money and teach the verifier that `$70,000,000.00` and
+`70,000,000` are the same number. That took accepted narratives from 0/5 to 5/5. The full
+story is in [Real bugs found by testing against real
+things](#real-bugs-found-by-testing-against-real-things).
 
 ## What it actually does
 
@@ -53,7 +54,7 @@ validated by a real bug the tool's own use surfaced, not by assumption.
 |---|---|---|
 | **LangGraph** | Orchestrates the agent as an explicit graph: plan → run tools → retrieve context → draft → verify → repair → finalize | Tool *routing* is a deterministic keyword classifier, not an LLM decision — which tool gets called is auditable, not emergent. The graph structure is what makes a "reject and refuse" fallback path possible at all: one repair attempt, then finalize hands back raw evidence instead of a possibly-wrong narrative. |
 | **Ollama + Llama 3.1 8B** (local, 4-bit) | All text generation, on an 8GB laptop GPU | A complete GenAI product with zero hosted-inference dependency. Live testing also caught a real model failure mode — see below — that a hosted-API demo would have masked behind a provider's own guardrails. |
-| **FAISS + sentence-transformers** | Local vector index over narrative filing text | Retrieval-augmented context without a hosted vector database. |
+| **FAISS + sentence-transformers** | Local vector index over this deal's real 10-D and 8-K filings, embedded with `bge-small-en-v1.5` | Retrieval-augmented generation with no hosted vector database and no embedding API. Ingestion indexes 8 real narrative filings (19 chunks); the chat endpoint hands that index to the agent, so questions phrased for narrative context retrieve real filing prose alongside the deterministic tool output. Retrieved text enters the prompt as explicitly untrusted evidence — it can add context, but it can never move a number. |
 | **A hand-written mechanical verifier** (no LLM grading itself) | Checks every number-shaped token in a drafted answer against the tool evidence it was supposedly drawn from, before the answer is shown | This is the actual anti-hallucination mechanism — not a prompt instruction ("please cite your sources"), a Python function that fails the answer if a number can't be found in evidence. Extended mid-project to also catch degenerate/repetitive generation, once live testing showed a plausible number wasn't the only way an answer could be wrong. |
 | **FastAPI + Pydantic** | The HTTP API: ingestion jobs, deal analytics, chat | A typed, self-documenting API surface where a malformed request fails at the boundary, not three functions deep. |
 | **PostgreSQL + SQLAlchemy** | Normalized persistence for parsed CMBS domain data | Idempotent re-ingestion (upsert on natural keys) and, after a live bug, per-unit-of-work `SAVEPOINT` isolation — see below. |
@@ -108,44 +109,59 @@ cause, with a regression test proven meaningful by reverting the fix first.
   answers in the golden-question report was the deterministic refusal fallback, not a
   genuine model narrative — the summary's pass/fail boolean made that indistinguishable from
   a real success. Fixed two ways: `evaluation.py` now computes and prominently reports a
-  `fallback_rate` (currently 100%, three runs straight — see [Known
-  gaps](#known-gaps-not-yet-fixed)) instead of only a pass/fail flag; and
-  `run_evaluations.py`'s citation URLs, which had been a placeholder that happened to satisfy
-  the validity check's prefix test without resolving to anything real (confirmed 404), were
-  replaced with the real accession URLs and are now live-HTTP-verified as part of every run,
-  not just prefix-matched.
+  `fallback_rate` instead of only a pass/fail flag; and `run_evaluations.py`'s citation URLs,
+  which had been a placeholder that happened to satisfy the validity check's prefix test
+  without resolving to anything real (confirmed 404), were replaced with the real accession
+  URLs and are now live-HTTP-verified as part of every run.
+- **The root cause behind that 100% fallback rate: the model was set up to fail.** Once the
+  reporting was honest, the underlying problem was visible. The evidence handed to the model
+  looked like `loan 1 (215 Park Ave South): actual 70000000.00000000 vs scheduled
+  70000000.00000000 (drift 0E-8)` — eight trailing zeros of machine precision, `Decimal`
+  scientific notation for zero, and ten near-identical rows all saying "nothing drifted."
+  Worse, it was a trap: any natural rewriting ("$70 million") was rejected by the numeric
+  verifier as an unsupported number, so no draft could satisfy both the prompt and the check
+  at once. The model degenerated into repetition loops trying. Three fixes, at the actual
+  cause rather than the symptom: render evidence as human money (`$70,000,000.00`), teach
+  the verifier that `$70,000,000.00` and `70,000,000` are the same number, and report "all
+  62 loans sit exactly on schedule" once instead of printing ten identical zero rows. Result:
+  accepted narrative answers went from **0/5 to 5/5**, evidence for the flagship question
+  shrank from 1,333 characters of noise to 327 of signal, and no question needed a repair
+  attempt. A `repeat_penalty` was added to the sampler as a second guard, with the verifier's
+  repetition check kept as the backstop.
 
 ## Known gaps (not yet fixed)
 
 Found by an external review of this README's claims, verified independently against the
-code and live runs before writing them down here. Not fixed yet — listed honestly rather
-than quietly walked back, per the same principle the rest of this project runs on.
+code and live runs before writing them down here. Listed honestly rather than quietly
+walked back, per the same principle the rest of this project runs on. Two of the four gaps
+that review found are now fixed (retrieval wiring and invented loan references); these
+remain.
 
-- **The verifier only checks numbers, repetition, and citation presence — not whether
-  non-numeric claims (an invented loan ID, a fabricated confidence score) came from real
-  evidence.** A structural gap, not a bug in one check: closing it needs the drafting step
-  to emit a typed answer referencing specific evidence IDs, with prose rendered
-  deterministically from validated claims, rather than free-form text checked after the
-  fact.
+- **Non-numeric claim validation is targeted, not general.** The verifier now checks numbers,
+  repetition, citation presence, *and* loan references — the last added because a review
+  caught the running UI returning invented `loan_1`/`loan_2` marked as verified. But it
+  validates the one entity type whose identity carries real consequence here, not arbitrary
+  prose claims. Closing that fully needs the drafting step to emit a typed answer referencing
+  evidence IDs, with prose rendered deterministically from validated claims.
 - **The real ingestion path always compares the two most recently ingested reporting
   periods** (`ingestion_job.py`), with no way to request an arbitrary pair. A question that
   names a specific range (e.g. "May to July") is answered against whichever two periods
   happen to be most recent, not the range asked for. The golden evaluation sidesteps this by
   loading two specific fixture periods directly, so it doesn't exercise the real API's actual
   period-selection behavior.
-- **FAISS/retrieval is not wired into the real chat endpoint** — `api.py` builds the agent
-  graph without a vector index, so the narrative-retrieval code path is inert in the running
-  product even though it's implemented and unit-tested in isolation. No 8-K/10-D narrative
-  filings are ingested yet either, so there's nothing for it to retrieve from even once wired.
 
 ## Architecture
 
 ```text
 React (Vite)  ──fetch──►  FastAPI  ──enqueue──►  Redis / RQ worker
                              │                         │
-                             ├── PostgreSQL             ├── SEC EDGAR (real filings)
-                             ├── FAISS (local vectors)   
-                             └── LangGraph agent ──► Ollama (local Llama 3.1 8B)
+                             │                         ├── SEC EDGAR ABS-EE  → PostgreSQL
+                             │                         └── SEC EDGAR 10-D/8-K → FAISS
+                             │
+                             └── LangGraph agent
+                                   ├── deterministic tools  ← PostgreSQL / parsed loans
+                                   ├── narrative retrieval  ← FAISS (untrusted evidence)
+                                   └── drafting + verify    → Ollama (local Llama 3.1 8B)
 ```
 
 **Two invariants hold everywhere in this codebase:**

@@ -141,6 +141,42 @@ def test_missing_expected_fact_is_recorded() -> None:
     assert result.missing_facts == ("loan 30", "cummins station")
 
 
+def test_fact_matching_accepts_a_plural_entity_listing() -> None:
+    """'Loans 30 ... changed status' does name loan 30 - the plural is good
+    writing, not a missing fact. Regression test for a real failure
+    (2026-08-29) where a correct model answer was marked failed on grammar.
+
+    Deliberate limit: this only singularizes the entity noun. A distributive
+    reference with no noun of its own ('Loans 30 and 16' -> the bare '16')
+    is NOT matched, and shouldn't be - inferring that would need real
+    parsing, and loosening the check that far is how a verifier starts
+    accepting things it hasn't actually verified."""
+    result = evaluate_question(
+        invoke=lambda _q: _clean_result(
+            final_answer="Loans 30 (Cummins Station) and 16 (PWC Pennant) changed status."
+        ),
+        case=_case(expected_facts=("loan 30",)),
+    )
+    assert result.missing_facts == ()
+    assert result.facts_covered is True
+
+    distributive = evaluate_question(
+        invoke=lambda _q: _clean_result(
+            final_answer="Loans 30 (Cummins Station) and 16 (PWC Pennant) changed status."
+        ),
+        case=_case(expected_facts=("loan 16",)),
+    )
+    assert distributive.missing_facts == ("loan 16",)
+
+
+def test_fact_matching_still_fails_when_the_entity_is_genuinely_absent() -> None:
+    result = evaluate_question(
+        invoke=lambda _q: _clean_result(final_answer="Loans 16 and 39 changed status."),
+        case=_case(expected_facts=("loan 30",)),
+    )
+    assert result.missing_facts == ("loan 30",)
+
+
 def test_facts_covered_is_case_insensitive() -> None:
     result = evaluate_question(
         invoke=lambda _q: _clean_result(final_answer="LOAN 30 changed status."),

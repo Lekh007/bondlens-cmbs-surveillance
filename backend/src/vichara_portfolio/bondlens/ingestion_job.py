@@ -9,6 +9,7 @@ does not close over any live object from the enqueuing process.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date
 
 import httpx
@@ -52,11 +53,14 @@ def run_ingestion_job(cik: str) -> dict[str, object]:
     loans_a = successful[-2].loans if len(successful) >= 2 else ()
     loans_b = successful[-1].loans if successful else ()
 
+    narrative = _ingest_narrative_corpus(cik, sec=sec, filing_store=filing_store)
+
     DEAL_CACHE[cik] = DealCacheEntry(
         deal=Deal(cik=cik, name=summary.deal_name),
         loans_a=loans_a,
         loans_b=loans_b,
         filing_source=loans_b[0].source if loans_b else None,
+        vector_index=narrative.index,
     )
 
     return {
@@ -66,4 +70,44 @@ def run_ingestion_job(cik: str) -> dict[str, object]:
         "skipped_count": summary.skipped_count,
         "failed_count": summary.failed_count,
         "periods_with_data": len(successful),
+        "narrative_filings_indexed": narrative.filings_indexed,
+        "narrative_chunks_indexed": narrative.chunks_indexed,
+        "narrative_error": narrative.error,
     }
+
+
+@dataclass(frozen=True)
+class _NarrativeOutcome:
+    index: object | None
+    filings_indexed: int
+    chunks_indexed: int
+    error: str | None
+
+
+def _ingest_narrative_corpus(
+    cik: str, *, sec: SecEdgarClient, filing_store: FilingStore
+) -> _NarrativeOutcome:
+    """Build the FAISS retrieval corpus from this deal's 10-D/8-K filings.
+
+    Imported lazily and failure-tolerant on purpose: faiss and
+    sentence-transformers are heavyweight, and the asset-data ingestion
+    above (which every deterministic analytic depends on) must not fail
+    because an embedding model could not load. A deal with no narrative
+    index still answers every structured question - it just cannot answer
+    narrative ones, which the agent handles by having no retrieved chunks.
+    """
+    try:
+        from vichara_portfolio.bondlens.adapters.faiss_index import FaissVectorIndex
+        from vichara_portfolio.bondlens.narrative_ingest import ingest_narrative_filings
+
+        index = FaissVectorIndex()
+        result = ingest_narrative_filings(cik=cik, sec=sec, filing_store=filing_store, index=index)
+    except Exception as exc:
+        return _NarrativeOutcome(index=None, filings_indexed=0, chunks_indexed=0, error=str(exc))
+
+    return _NarrativeOutcome(
+        index=index,
+        filings_indexed=result.filings_indexed,
+        chunks_indexed=result.chunks_indexed,
+        error=None,
+    )

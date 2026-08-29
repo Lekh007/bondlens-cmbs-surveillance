@@ -24,6 +24,13 @@ class DealCacheEntry:
     loans_a: tuple[Loan, ...]
     loans_b: tuple[Loan, ...]
     filing_source: SourceRef | None
+    # FAISS index over this deal's narrative filings (10-D/8-K), built
+    # during ingestion by narrative_ingest. Kept loosely typed so this
+    # module never imports faiss/sentence-transformers - importing them
+    # here would drag a heavyweight optional dependency into every code
+    # path that touches the cache. None means narrative ingestion was
+    # skipped or failed; the agent degrades to deterministic tools only.
+    vector_index: object | None = None
 
 
 DEAL_CACHE: dict[str, DealCacheEntry] = {}

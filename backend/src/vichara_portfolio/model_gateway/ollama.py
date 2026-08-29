@@ -43,6 +43,13 @@ DEFAULT_NUM_CTX = 4096
 # long for a surveillance answer. Capped rather than just raising the
 # client timeout, since an analyst answer should be concise regardless.
 DEFAULT_NUM_PREDICT = 400
+# Real finding (2026-08-29): pure greedy decoding (temperature 0, no
+# repeat penalty) on evidence-heavy prompts full of similar numeric rows
+# is the classic trigger for degenerate repetition loops, and this model
+# hit one reproducibly. A mild repeat penalty is the standard, direct
+# guard - the verifier's repetition check stays as the backstop, but the
+# sampler should not be walking into the loop in the first place.
+DEFAULT_REPEAT_PENALTY = 1.15
 
 
 class OllamaProvider:
@@ -53,10 +60,12 @@ class OllamaProvider:
         model: str = DEFAULT_MODEL,
         num_ctx: int = DEFAULT_NUM_CTX,
         num_predict: int = DEFAULT_NUM_PREDICT,
+        repeat_penalty: float = DEFAULT_REPEAT_PENALTY,
         client: httpx.Client | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
+        self._repeat_penalty = repeat_penalty
         self._num_ctx = num_ctx
         self._num_predict = num_predict
         self._client = client or httpx.Client(base_url=self._base_url)
@@ -90,6 +99,7 @@ class OllamaProvider:
                     "temperature": temperature,
                     "num_ctx": self._num_ctx,
                     "num_predict": self._num_predict,
+                    "repeat_penalty": self._repeat_penalty,
                 },
             },
             timeout_seconds=timeout_seconds,
@@ -118,6 +128,7 @@ class OllamaProvider:
                     "temperature": temperature,
                     "num_ctx": self._num_ctx,
                     "num_predict": self._num_predict,
+                    "repeat_penalty": self._repeat_penalty,
                 },
             },
             timeout_seconds=timeout_seconds,
