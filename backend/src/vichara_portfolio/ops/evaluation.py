@@ -25,7 +25,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from vichara_portfolio.bondlens.agent import AgentState, find_unsupported_numbers
+from vichara_portfolio.bondlens.agent import (
+    AgentState,
+    find_unsupported_numbers,
+    is_refusal_fallback,
+)
 from vichara_portfolio.shared.provenance import SourceRef
 
 _VALID_CITATION_URL_PREFIXES = ("https://www.sec.gov/", "https://data.sec.gov/")
@@ -57,6 +61,7 @@ class QuestionResult:
     invalid_citation_urls: tuple[str, ...]
     latency_seconds: float
     final_answer: str
+    used_fallback: bool
     judge_score: float | None
     passed: bool
     failure_reasons: tuple[str, ...]
@@ -78,6 +83,7 @@ class EvaluationSummary:
     retrieval_recall_note: str
     total_unsupported_claims: int
     average_latency_seconds: float
+    fallback_rate: float
     g1_passed: bool
     g1_failures: tuple[str, ...] = field(default_factory=tuple)
 
@@ -121,6 +127,7 @@ def evaluate_question(
 
     evidence_gathered = bool(tool_evidence) or bool(result.get("retrieved_chunks"))
     has_citations = len(citations) > 0
+    used_fallback = is_refusal_fallback(final_answer)
 
     judge_score = judge(case.question, final_answer) if judge is not None else None
 
@@ -153,6 +160,7 @@ def evaluate_question(
         invalid_citation_urls=invalid_citation_urls,
         latency_seconds=latency,
         final_answer=final_answer,
+        used_fallback=used_fallback,
         judge_score=judge_score,
         passed=len(failure_reasons) == 0,
         failure_reasons=tuple(failure_reasons),
@@ -177,6 +185,11 @@ def evaluate_golden_set(
     citation_coverage_rate = sum(q.citation_count > 0 for q in questions) / n
     total_unsupported_claims = sum(q.unsupported_claim_count for q in questions)
     average_latency_seconds = sum(q.latency_seconds for q in questions) / n
+    # Fraction of answers that are finalize_node's raw-evidence refusal, not
+    # a genuine model narrative. A question can be `passed` while its answer
+    # used the fallback - this metric is what makes that distinction
+    # impossible to miss in a saved report (see is_refusal_fallback).
+    fallback_rate = sum(q.used_fallback for q in questions) / n
 
     all_citation_urls = [url for q in questions for url in q.citation_urls]
     source_url_validity_rate = (
@@ -226,6 +239,7 @@ def evaluate_golden_set(
         ),
         total_unsupported_claims=total_unsupported_claims,
         average_latency_seconds=average_latency_seconds,
+        fallback_rate=fallback_rate,
         g1_passed=len(g1_failures) == 0,
         g1_failures=tuple(g1_failures),
     )
@@ -246,6 +260,7 @@ def summary_to_dict(summary: EvaluationSummary) -> dict[str, object]:
         "retrieval_recall_note": summary.retrieval_recall_note,
         "total_unsupported_claims": summary.total_unsupported_claims,
         "average_latency_seconds": summary.average_latency_seconds,
+        "fallback_rate": summary.fallback_rate,
         "g1_passed": summary.g1_passed,
         "g1_failures": list(summary.g1_failures),
         "questions": [
@@ -266,6 +281,7 @@ def summary_to_dict(summary: EvaluationSummary) -> dict[str, object]:
                 "invalid_citation_urls": list(q.invalid_citation_urls),
                 "latency_seconds": q.latency_seconds,
                 "final_answer": q.final_answer,
+                "used_fallback": q.used_fallback,
                 "judge_score": q.judge_score,
                 "passed": q.passed,
                 "failure_reasons": list(q.failure_reasons),

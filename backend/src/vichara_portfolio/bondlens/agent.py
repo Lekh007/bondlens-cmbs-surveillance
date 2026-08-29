@@ -484,15 +484,33 @@ def repair_node(state: AgentState) -> AgentState:
 # --------------------------------------------------------------------------
 
 
+REFUSAL_PREAMBLE = (
+    "I could not produce a narrative answer that stays fully within the verified "
+    "evidence, so here is exactly what the deterministic tools found instead:"
+)
+
+
+def is_refusal_fallback(final_answer: str) -> bool:
+    """True when a final answer is finalize_node's raw-evidence refusal, not a
+    genuine model narrative. Exported (not finalize_node-only) so callers that
+    only see the delivered answer - the evaluator, a report, a UI banner - can
+    tell the two apart without string-matching the preamble themselves. A
+    "PASSED" verification result on a refusal means the safety net caught an
+    unacceptable draft, not that the model succeeded - conflating the two is
+    exactly the gap that made an earlier G1 report read as 5/5 narrative
+    successes when it was actually 5/5 safety-net fallbacks (measured
+    2026-08-29 across three separate live runs, 0 accepted narratives in any
+    of them)."""
+    return final_answer.startswith(REFUSAL_PREAMBLE)
+
+
 def finalize_node(state: AgentState) -> AgentState:
     if not state.get("verification_errors"):
         return {**state, "final_answer": state.get("draft", "")}
 
     evidence_text = _render_evidence_text(state)
     refusal = (
-        "I could not produce a narrative answer that stays fully within the verified "
-        "evidence, so here is exactly what the deterministic tools found instead:\n"
-        f"{evidence_text or '(no evidence was gathered for this question)'}"
+        f"{REFUSAL_PREAMBLE}\n{evidence_text or '(no evidence was gathered for this question)'}"
     )
     return {**state, "final_answer": refusal}
 

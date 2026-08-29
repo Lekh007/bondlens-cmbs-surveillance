@@ -5,14 +5,25 @@ surveillance, built directly on real SEC EDGAR regulatory filings. Every number 
 is computed by deterministic Python, never by the language model — the model's only job is
 to explain what the tools found and cite exactly where each fact came from.
 
-It runs entirely on one workstation: local LLM inference (Ollama), local vector search
-(FAISS), local Postgres/Redis. No paid API key anywhere in the stack.
+It runs entirely on one workstation: local LLM inference (Ollama), local Postgres/Redis, and
+a FAISS vector-search adapter that exists and is unit-tested but is **not yet wired into the
+running chat endpoint** (see [Known gaps](#known-gaps-not-yet-fixed) below). No paid API key
+anywhere in the stack.
 
-**Status:** the [golden-question evaluation](docs/demo/bondlens-golden-questions.md) gate has
-**passed** against the real installed model and real filing data: 5/5 golden questions,
-100% tool-routing accuracy, 100% numeric exactness, 100% citation coverage, 100% source-URL
-validity. Not a mocked demo — see [Real bugs found by testing against real
-things](#real-bugs-found-by-testing-against-real-things) below.
+**Status: the deterministic layer is solid; the narrative layer is not yet reliable.**
+The [golden-question evaluation](docs/demo/bondlens-golden-questions.md) gate passes 5/5
+against the real installed model and real filing data — but "G1: PASSED" currently means
+*the safety net never let an ungrounded answer through*, not that the model successfully
+wrote 5 narrative answers. Measured 2026-08-29, three separate live runs: **100% of
+delivered answers used the deterministic refusal fallback** (raw tool evidence, not model
+prose) — `llama3.1:8b` at this quantization has not yet produced a single accepted
+narrative for these evidence-heavy prompts within the one-retry budget. Every number and
+every citation in every one of those fallback answers is still real and traceable (SEC
+URLs are now live-HTTP-verified as part of the evaluation, not just prefix-matched) — the
+open problem is the model's drafting reliability, not the grounding. See [Known
+gaps](#known-gaps-not-yet-fixed) and [Real bugs found by testing against real
+things](#real-bugs-found-by-testing-against-real-things) below for the full, unfiltered
+picture, including gaps a first pass at this README understated.
 
 ## What it actually does
 
@@ -50,7 +61,7 @@ validated by a real bug the tool's own use surfaced, not by assumption.
 | **React 19 + TypeScript + Vite** | The product UI | A typed component tree where a backend contract change is a compile error, not a runtime surprise. |
 | **TanStack Query** | Server-state fetching, caching, and invalidation | No hand-rolled loading/error/stale-cache state machine per screen. |
 | **Zod** | Runtime validation of every API response on the client | A backend response that doesn't match its declared shape fails loudly and specifically, instead of silently propagating `undefined` into a chart. |
-| **Playwright** | End-to-end browser test of the real user flow | Automated proof that ingest → dashboard → ask a question → open a citation actually works together, not just each piece in isolation. |
+| **Playwright** | End-to-end browser test of the real user flow | Automated proof that the frontend's own logic — ingest → dashboard → ask a question → open a citation — works together, given a known-good API. **It runs against route-mocked responses, not the real backend/model** — it does not, by itself, prove the real integration works; the CORS and dropdown bugs below were only found by running the real stack together by hand. |
 | **Docker Compose** | Local Postgres + Redis | Reproducible infrastructure without touching the host machine's other services (this workstation already runs unrelated Postgres/Redis instances on the standard ports). |
 | **pytest, ruff, mypy --strict** | Test/lint/type gates | 190+ automated tests, zero lint findings, zero type errors, and a discipline of proving every regression test meaningful by reverting the fix and watching it fail before restoring it. |
 | **SEC EDGAR's public data API** | The only data source | Real-world data engineering against an undocumented quirk: EDGAR's `index.json` silently omits the asset-data exhibit for filings where it should be listed — a resolver trusting it alone finds zero data for 3 of 5 real filings on this deal. Fixed by parsing the full submission header instead. |
@@ -92,6 +103,40 @@ cause, with a regression test proven meaningful by reverting the fix first.
   showing the first option in the browser, without ever firing its change handler — so the
   UI *looked* like a deal was chosen while the app's own state still said none was. Only
   visible by actually clicking through the flow, not by asserting on rendered text.
+- **A "5/5, 100%" evaluation report that hid its own model failure — found by an
+  independent review, not by this project's own testing.** Every one of the 5 saved "PASSED"
+  answers in the golden-question report was the deterministic refusal fallback, not a
+  genuine model narrative — the summary's pass/fail boolean made that indistinguishable from
+  a real success. Fixed two ways: `evaluation.py` now computes and prominently reports a
+  `fallback_rate` (currently 100%, three runs straight — see [Known
+  gaps](#known-gaps-not-yet-fixed)) instead of only a pass/fail flag; and
+  `run_evaluations.py`'s citation URLs, which had been a placeholder that happened to satisfy
+  the validity check's prefix test without resolving to anything real (confirmed 404), were
+  replaced with the real accession URLs and are now live-HTTP-verified as part of every run,
+  not just prefix-matched.
+
+## Known gaps (not yet fixed)
+
+Found by an external review of this README's claims, verified independently against the
+code and live runs before writing them down here. Not fixed yet — listed honestly rather
+than quietly walked back, per the same principle the rest of this project runs on.
+
+- **The verifier only checks numbers, repetition, and citation presence — not whether
+  non-numeric claims (an invented loan ID, a fabricated confidence score) came from real
+  evidence.** A structural gap, not a bug in one check: closing it needs the drafting step
+  to emit a typed answer referencing specific evidence IDs, with prose rendered
+  deterministically from validated claims, rather than free-form text checked after the
+  fact.
+- **The real ingestion path always compares the two most recently ingested reporting
+  periods** (`ingestion_job.py`), with no way to request an arbitrary pair. A question that
+  names a specific range (e.g. "May to July") is answered against whichever two periods
+  happen to be most recent, not the range asked for. The golden evaluation sidesteps this by
+  loading two specific fixture periods directly, so it doesn't exercise the real API's actual
+  period-selection behavior.
+- **FAISS/retrieval is not wired into the real chat endpoint** — `api.py` builds the agent
+  graph without a vector index, so the narrative-retrieval code path is inert in the running
+  product even though it's implemented and unit-tested in isolation. No 8-K/10-D narrative
+  filings are ingested yet either, so there's nothing for it to retrieve from even once wired.
 
 ## Architecture
 

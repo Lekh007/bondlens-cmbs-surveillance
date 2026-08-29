@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
-from vichara_portfolio.bondlens.agent import ToolEvidence
+from vichara_portfolio.bondlens.agent import REFUSAL_PREAMBLE, ToolEvidence
 from vichara_portfolio.ops.evaluation import (
     GoldenCase,
     evaluate_golden_set,
@@ -169,6 +169,30 @@ def test_latency_is_measured_and_non_negative() -> None:
     assert result.latency_seconds >= 0.0
 
 
+def test_used_fallback_false_for_a_genuine_narrative_answer() -> None:
+    result = evaluate_question(invoke=lambda _q: _clean_result(), case=_case())
+    assert result.used_fallback is False
+
+
+def test_used_fallback_true_for_the_refusal_answer() -> None:
+    """A question can pass G1's mechanical checks (grounded, cited) while the
+    model itself produced nothing usable - finalize_node's refusal is
+    grounded by construction, not because the model succeeded. `passed` and
+    `used_fallback` measure different things and a report must show both,
+    not let a PASS imply the model actually narrated an answer (the exact
+    gap that made an earlier report read as "5/5 passed" when live testing
+    2026-08-29 showed 0 of those 5 were genuine narrative answers, 3 runs in
+    a row)."""
+    result = evaluate_question(
+        invoke=lambda _q: _clean_result(
+            final_answer=f"{REFUSAL_PREAMBLE}\n[rank_loans_by_status_change] loan 30: 0 -> B"
+        ),
+        case=_case(),
+    )
+    assert result.passed is True
+    assert result.used_fallback is True
+
+
 def test_evaluate_golden_set_aggregates_across_questions() -> None:
     cases = [_case(case_id="a"), _case(case_id="b", expected_tools=("get_deal_summary",))]
 
@@ -187,6 +211,24 @@ def test_evaluate_golden_set_aggregates_across_questions() -> None:
     assert summary.source_url_validity_rate == 1.0
     assert summary.citation_coverage_rate == 1.0
     assert summary.total_unsupported_claims == 0
+
+
+def test_fallback_rate_reflects_how_many_answers_were_genuine_narrative() -> None:
+    cases = [_case(case_id="a"), _case(case_id="b")]
+    refusal = f"{REFUSAL_PREAMBLE}\n[rank_loans_by_status_change] loan 30: 0 -> B"
+    # evaluate_question is called once per case, in list order - case "a"
+    # gets a genuine narrative, case "b" gets the refusal.
+    answers = iter([_clean_result(), _clean_result(final_answer=refusal)])
+
+    summary = evaluate_golden_set(
+        invoke=lambda _q: next(answers),
+        cases=cases,
+        model_name="ollama/llama3.1:8b",
+        data_snapshot="2026-07-13",
+    )
+
+    assert summary.fallback_rate == 0.5
+    assert [q.used_fallback for q in summary.questions] == [False, True]
 
 
 def test_g1_passes_when_every_metric_is_clean() -> None:

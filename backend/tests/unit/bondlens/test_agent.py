@@ -16,6 +16,7 @@ from vichara_portfolio.bondlens.agent import (
     ToolEvidence,
     _sanitize_untrusted_text,
     build_agent_graph,
+    is_refusal_fallback,
     plan_node,
     verify_node,
 )
@@ -297,6 +298,7 @@ def test_graph_repairs_once_when_first_draft_hallucinates_a_number(may_loans, ju
     assert len(model.calls) == 2
     assert result["verification_errors"] == []
     assert result["final_answer"] == "Loan 30 moved from status 0 to B."
+    assert is_refusal_fallback(result["final_answer"]) is False
 
 
 def test_graph_refuses_and_returns_evidence_when_repair_still_fails(may_loans, july_loans) -> None:
@@ -314,6 +316,19 @@ def test_graph_refuses_and_returns_evidence_when_repair_still_fails(may_loans, j
     assert result["verification_errors"]
     assert "could not produce a narrative answer" in result["final_answer"]
     assert "rank_loans_by_status_change" in result["final_answer"]
+    assert is_refusal_fallback(result["final_answer"]) is True
+
+
+def test_is_refusal_fallback_true_only_for_the_real_refusal_text() -> None:
+    assert is_refusal_fallback("Loan 30 moved from status 0 to B.") is False
+    assert (
+        is_refusal_fallback(
+            "I could not produce a narrative answer that stays fully within the "
+            "verified evidence, so here is exactly what the deterministic tools "
+            "found instead:\n[rank_loans_by_status_change] loan 30: status 0 -> B"
+        )
+        is True
+    )
 
 
 def test_graph_property_noi_question_returns_the_honest_empty_result(may_loans, july_loans) -> None:
