@@ -402,23 +402,64 @@ def _normalize_number(token: str) -> str:
     return token.replace(",", "")
 
 
-def verify_node(state: AgentState) -> AgentState:
-    draft = state.get("draft", "")
+def find_unsupported_numbers(text: str, state: AgentState) -> tuple[str, ...]:
+    """Every number-shaped token in `text` absent from this state's rendered
+    evidence. Public (not `verify_node`-only) because it needs to run
+    against more than just the draft verify_node originally checked: the
+    evaluator (ops/evaluation.py) must check the actual delivered
+    `final_answer`, which after a repair failure is finalize_node's
+    verbatim evidence echo, not the rejected draft - re-checking that
+    fallback against verification_errors computed on the old draft would
+    wrongly flag it as unsupported even though it can only ever contain
+    numbers already in evidence, by construction."""
     evidence_text = _render_evidence_text(state)
     normalized_evidence = _normalize_number(evidence_text)
 
-    errors: list[str] = []
-
-    unsupported_numbers = []
-    for match in _NUMBER_PATTERN.finditer(draft):
+    unsupported: list[str] = []
+    for match in _NUMBER_PATTERN.finditer(text):
         token = match.group()
         if len(token.replace(",", "").replace(".", "")) < _MIN_NUMBER_LENGTH:
             continue
         normalized = _normalize_number(token)
         if normalized not in normalized_evidence:
-            unsupported_numbers.append(token)
+            unsupported.append(token)
+    return tuple(unsupported)
+
+
+_REPETITION_WINDOW = 20
+_REPETITION_MAX_OCCURRENCES = 4
+
+
+def _has_pathological_repetition(text: str) -> bool:
+    """Catches degenerate greedy-decoding loops - a real, reproducible
+    llama3.1:8b failure mode on evidence-heavy prompts (found via live
+    testing 2026-08-29: the flagship two-tool question generated
+    'B 7, D 6, C 4, A 5, R 3, A 2, 0 I will 1,' on a loop). The number
+    check above can't catch this alone when every repeated digit happens
+    to already be a small loan number present in evidence - but no
+    coherent sentence repeats the same 20-character span 5+ times."""
+    if len(text) < _REPETITION_WINDOW * _REPETITION_MAX_OCCURRENCES:
+        return False
+    counts: dict[str, int] = {}
+    for i in range(len(text) - _REPETITION_WINDOW + 1):
+        chunk = text[i : i + _REPETITION_WINDOW]
+        occurrences = counts.get(chunk, 0) + 1
+        counts[chunk] = occurrences
+        if occurrences > _REPETITION_MAX_OCCURRENCES:
+            return True
+    return False
+
+
+def verify_node(state: AgentState) -> AgentState:
+    draft = state.get("draft", "")
+    errors: list[str] = []
+
+    unsupported_numbers = find_unsupported_numbers(draft, state)
     if unsupported_numbers:
         errors.append(f"numbers not present in evidence: {', '.join(unsupported_numbers)}")
+
+    if _has_pathological_repetition(draft):
+        errors.append("draft is a degenerate repetitive loop, not coherent prose")
 
     evidence_gathered = bool(state.get("tool_evidence")) or bool(state.get("retrieved_chunks"))
     citations = _collect_citations(state)

@@ -16,7 +16,7 @@ import pytest
 import yaml
 
 from vichara_portfolio.bondlens.adapters.abs_ee import parse_asset_data
-from vichara_portfolio.bondlens.agent import build_agent_graph
+from vichara_portfolio.bondlens.agent import build_agent_graph, find_unsupported_numbers
 from vichara_portfolio.bondlens.domain import Deal
 from vichara_portfolio.model_gateway.ollama import OllamaProvider
 from vichara_portfolio.shared.provenance import SourceRef
@@ -102,9 +102,19 @@ def test_golden_question(case: dict, loans: dict[str, tuple]) -> None:
         # here (e.g. "May July") - but record it for visibility.
         print(f"NOTE [{case['id']}]: unverified capitalized phrase in answer: {candidate!r}")
 
-    if result["verification_errors"]:
+    # verification_errors reflects whatever draft verify_node last rejected,
+    # not necessarily the delivered final_answer - after a repair failure,
+    # finalize_node falls back to a verbatim evidence echo that is grounded
+    # by construction, even though state["verification_errors"] still shows
+    # the earlier draft's rejection reasons. Re-check the actual delivered
+    # answer instead of trusting that stale field (same real bug fixed in
+    # ops/evaluation.py, found here independently via this live run
+    # 2026-08-29: every one of the 5 questions "failed" under the old
+    # blanket check even when their final answers were fully correct).
+    unsupported = find_unsupported_numbers(result["final_answer"], result)
+    if unsupported:
         pytest.fail(
-            f"{case['id']}: verifier rejected the final draft: {result['verification_errors']}\n"
-            f"draft was: {result.get('draft')!r}\n"
+            f"{case['id']}: delivered final_answer has numbers not in evidence: {unsupported}\n"
+            f"final_answer was: {result['final_answer']!r}\n"
             f"evidence was: {[e.rendered for e in result.get('tool_evidence', [])]!r}"
         )

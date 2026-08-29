@@ -191,6 +191,54 @@ def test_verify_passes_trivially_with_no_evidence_and_no_draft() -> None:
     assert result["verification_errors"] == []
 
 
+def test_verify_flags_a_degenerate_repetitive_draft() -> None:
+    """Regression test for a real bug (2026-08-29, live Ollama testing on
+    the flagship two-tool question): a degenerate greedy-decoding loop
+    ('B 7, D 6, C 4, A 5, R 3, A 2, 0 I will 1,' repeated ~12 times) used
+    only small digits that already happened to be loan numbers present in
+    evidence, so the numeric check alone passed it as 'verified' even
+    though it is not a sentence."""
+    gibberish = "B 7, D 6, C 4, A 5, R 3, A 2, 0 I will 1, " * 12
+    state = {
+        "draft": gibberish,
+        "tool_evidence": [
+            ToolEvidence(
+                "rank_loans_by_status_change", "loan 30: status 0 -> B", (_source("x"),)
+            )
+        ],
+        "retrieved_chunks": [],
+    }
+    result = verify_node(state)
+    assert any("repetitive" in e or "degenerate" in e for e in result["verification_errors"])
+
+
+def test_verify_does_not_flag_normal_length_narrative_prose() -> None:
+    """A real, coherent multi-sentence draft must not trip the repetition
+    heuristic - guards against the fix above being too aggressive."""
+    draft = (
+        "Between the May and July reporting periods, loan 30 (Cummins Station) "
+        "moved from payment status 0 to status B, the deal's only newly "
+        "delinquent loan in this window. Two other loans returned to current "
+        "status: loan 16 (PWC Pennant) and loan 39 (325 East 14th Street), "
+        "both moving from status B back to status 0. Across the pool, actual "
+        "balances tracked their scheduled amortization closely, with no loan "
+        "showing meaningful drift between actual and scheduled balance."
+    )
+    state = {
+        "draft": draft,
+        "tool_evidence": [
+            ToolEvidence(
+                "rank_loans_by_status_change",
+                "loan 30: status 0 -> B; loan 16: status B -> 0; loan 39: status B -> 0",
+                (_source("x"),),
+            )
+        ],
+        "retrieved_chunks": [],
+    }
+    result = verify_node(state)
+    assert not any("repetitive" in e or "degenerate" in e for e in result["verification_errors"])
+
+
 def test_balance_drift_evidence_is_capped_to_top_movers(july_loans) -> None:
     """Regression test for a real finding: rendering all ~62 loans' drift
     lines produced a 3,240-token prompt that blew past the model's timeout.
