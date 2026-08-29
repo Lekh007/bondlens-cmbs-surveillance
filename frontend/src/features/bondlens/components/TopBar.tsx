@@ -19,9 +19,9 @@ export function TopBar({ density, onDensityChange, onExport, dealSelector }: Pro
           <BarChart3 size={18} strokeWidth={2.2} className="text-white" />
         </div>
         <div className="leading-tight">
-          <div className="text-[14px] font-semibold tracking-tight">Vichara</div>
+          <div className="text-[14px] font-semibold tracking-tight">BondLens</div>
           <div className="text-[10px] uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.65)' }}>
-            BondLens
+            CMBS Surveillance
           </div>
         </div>
       </div>

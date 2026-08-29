@@ -34,7 +34,7 @@ def create_app(
     model_provider: ModelProvider | None = None,
 ) -> FastAPI:
     settings = settings or Settings()  # type: ignore[call-arg]  # resolved from .env at runtime
-    app = FastAPI(title="Vichara BondLens API")
+    app = FastAPI(title="BondLens API")
 
     # Local portfolio demo only - the frontend dev server (Vite) runs on a
     # different origin/port than this API, so the browser needs an explicit
