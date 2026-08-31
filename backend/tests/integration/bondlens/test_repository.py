@@ -35,7 +35,16 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture(scope="module")
 def engine():
-    settings = Settings(_env_file=None, sec_user_agent="test/0.1 (t@example.com)", jwt_secret="x")
+    # Keep the optional-service probe bounded when Postgres is not running.
+    settings = Settings(
+        _env_file=None,
+        sec_user_agent="test/0.1 (t@example.com)",
+        jwt_secret="x",
+        database_url=(
+            "postgresql+psycopg://vichara:vichara@localhost:5433/vichara"
+            "?connect_timeout=2"
+        ),
+    )
     eng = make_engine(settings.database_url)
     try:
         with eng.connect() as conn:

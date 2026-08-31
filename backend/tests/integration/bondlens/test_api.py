@@ -31,7 +31,18 @@ from vichara_portfolio.shared.provenance import SourceRef
 
 
 def _settings() -> Settings:
-    return Settings(_env_file=None, sec_user_agent="test/0.1 (t@example.com)", jwt_secret="x")
+    # Keep the skip-on-unreachable probe bounded when the optional local
+    # Postgres service is not running (the default psycopg timeout can be
+    # several minutes on Windows).
+    return Settings(
+        _env_file=None,
+        sec_user_agent="test/0.1 (t@example.com)",
+        jwt_secret="x",
+        database_url=(
+            "postgresql+psycopg://vichara:vichara@localhost:5433/vichara"
+            "?connect_timeout=2"
+        ),
+    )
 
 
 def _source(label: str) -> SourceRef:
