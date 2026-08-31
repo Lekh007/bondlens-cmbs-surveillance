@@ -6,7 +6,15 @@ unless a test explicitly overrides it - real dev use defaults to "ollama"
 depend on Ollama being installed or running.
 """
 
+import os
+
 import pytest
+
+# Collection imports the FastAPI module before fixtures run. Supply safe test-only
+# values at module load so a clean checkout never needs a developer's private .env.
+os.environ.setdefault("SEC_USER_AGENT", "BondLens-Tests/0.1 (test@example.com)")
+os.environ.setdefault("JWT_SECRET", "test-only-secret")
+os.environ.setdefault("MODEL_PROVIDER", "deterministic")
 
 
 @pytest.fixture(autouse=True)

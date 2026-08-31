@@ -26,7 +26,11 @@ def test_path_outside_repo_root_is_rejected() -> None:
         _settings(raw_root="C:/Windows/Temp/vichara-raw")
 
 
-def test_sec_user_agent_is_required_but_not_secret() -> None:
+def test_sec_user_agent_is_required_but_not_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The repo-wide conftest supplies a safe import-time value so app modules can
+    # be collected from a clean checkout. Remove it here to test the required
+    # field contract itself.
+    monkeypatch.delenv("SEC_USER_AGENT", raising=False)
     with pytest.raises(pydantic.ValidationError):
         Settings(_env_file=None, jwt_secret="test-secret")  # type: ignore[call-arg]
 

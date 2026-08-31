@@ -4,9 +4,7 @@
 
 ```text
 React web shell
-├── /bondlens   CMBS surveillance and cited analyst chat   [in scope]
-├── /altsignal  Macro/regulatory/spending intelligence     [deferred]
-└── /ops        Model, evaluation, latency, audit          [deferred]
+└── /bondlens   CMBS surveillance and cited analyst chat
           │
           ▼
 FastAPI API ── Redis queue ── ingestion/ML worker
@@ -14,7 +12,7 @@ FastAPI API ── Redis queue ── ingestion/ML worker
     ├── PostgreSQL    ├── verified public APIs
     ├── FAISS         └── local files on D:
     ├── MLflow
-    └── local model gateway ── Ollama on host GPU
+    └── model gateway ── deterministic test provider or Ollama on host GPU
 
 Prometheus/Grafana ── observe API, worker, retrieval, and LLM behavior
 ```
@@ -62,6 +60,5 @@ BondLens therefore does loan-level surveillance and point-in-time property profi
 
 ## Documents
 
-- `docs/plans/design.md` — approved design, including the scope revision.
-- `docs/plans/implementation.md` — the task-by-task build plan.
-- `docs/api-audit.md` — live verification of every external source.
+- `README.md` — setup, verification, design summary, and project limitations.
+- `docs/demo/bondlens-golden-questions.md` — deterministic acceptance prompts.
