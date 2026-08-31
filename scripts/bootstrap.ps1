@@ -48,7 +48,7 @@ $ollamaExe = if (Test-Path -LiteralPath $installedOllama) {
 # path - before this script's SetEnvironmentVariable call can affect an
 # already-running process. `ollama pull` is a thin client that just talks
 # to whatever is already bound to :11434, so a pull silently landed 4.6 GB
-# on C:\Users\<you>\.ollama\models instead of D:. Always kill any existing
+# in the default per-user Ollama directory instead of D:. Always kill any existing
 # server first so the one this script starts is guaranteed to be reading
 # OLLAMA_MODELS=D:\...\.models\ollama.
 Get-Process -Name 'ollama*' -ErrorAction SilentlyContinue | Stop-Process -Force

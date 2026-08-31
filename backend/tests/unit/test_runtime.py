@@ -6,13 +6,13 @@ from vichara_portfolio.runtime import RuntimeProbe, Status, evaluate_readiness
 def _probe(**overrides: object) -> RuntimeProbe:
     base = dict(
         python_version=(3, 12, 13),
-        python_executable="D:/Vichara-GenAI-Portfolio/backend/.venv/Scripts/python.exe",
+        python_executable="D:/portfolio/backend/.venv/Scripts/python.exe",
         drive_d_writable=True,
         gpu_name="RTX 4060 Laptop GPU",
         docker_reachable=True,
         ollama_reachable=True,
         ollama_models=("llama3.1:8b",),
-        cache_path=Path("D:/Vichara-GenAI-Portfolio/.cache/huggingface"),
+        cache_path=Path("D:/portfolio/.cache/huggingface"),
     )
     base.update(overrides)
     return RuntimeProbe(**base)  # type: ignore[arg-type]
