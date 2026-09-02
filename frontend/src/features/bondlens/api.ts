@@ -25,6 +25,36 @@ const dealSummarySchema = z.object({
 })
 export type DealSummary = z.infer<typeof dealSummarySchema>
 
+const certificateDistributionItemSchema = z.object({
+  class_name: z.string(),
+  cusip: z.string(),
+  pass_through_rate: z.string().nullable(),
+  beginning_balance: z.string().nullable(),
+  principal_distribution: z.string().nullable(),
+  interest_distribution: z.string().nullable(),
+  ending_balance: z.string().nullable(),
+  source_url: z.string(),
+})
+
+const certificateDistributionResponseSchema = z.object({
+  report_date: z.string().nullable(),
+  source_url: z.string(),
+  entries: z.array(certificateDistributionItemSchema),
+})
+export type CertificateDistributionResponse = z.infer<typeof certificateDistributionResponseSchema>
+
+const bondCollateralReconciliationSchema = z.object({
+  report_date: z.string().nullable(),
+  ending_scheduled_collateral_balance: z.string().nullable(),
+  beginning_actual_collateral_balance: z.string().nullable(),
+  ending_actual_collateral_balance: z.string().nullable(),
+  beginning_certificate_balance: z.string().nullable(),
+  ending_certificate_balance: z.string().nullable(),
+  under_over_collateralization: z.string().nullable(),
+  source_url: z.string(),
+})
+export type BondCollateralReconciliation = z.infer<typeof bondCollateralReconciliationSchema>
+
 const loanFieldChangeSchema = z.object({
   loan_asset_number: z.string(),
   field_name: z.string(),
@@ -125,6 +155,20 @@ export function listDeals(): Promise<DealListItem[]> {
 
 export function getDealSummary(dealId: string): Promise<DealSummary> {
   return apiFetch(`/api/bondlens/deals/${dealId}/summary`, dealSummarySchema)
+}
+
+export function getCertificateDistributions(dealId: string): Promise<CertificateDistributionResponse> {
+  return apiFetch(
+    `/api/bondlens/deals/${dealId}/certificate-distributions`,
+    certificateDistributionResponseSchema,
+  )
+}
+
+export function getBondCollateralReconciliation(dealId: string): Promise<BondCollateralReconciliation> {
+  return apiFetch(
+    `/api/bondlens/deals/${dealId}/bond-collateral-reconciliation`,
+    bondCollateralReconciliationSchema,
+  )
 }
 
 export function getDealCompare(dealId: string): Promise<CompareResponse> {

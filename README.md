@@ -149,6 +149,10 @@ remain.
   happen to be most recent, not the range asked for. The golden evaluation sidesteps this by
   loading two specific fixture periods directly, so it doesn't exercise the real API's actual
   period-selection behavior.
+- **Exhibit 99.1 monthly reports are currently an in-process read model.** They are parsed,
+  validated, and exposed through the API after each ingestion, but are not yet persisted in a
+  dedicated database table. Restart the API and re-ingest the deal before using certificate
+  analytics again.
 
 ## Architecture
 
@@ -157,6 +161,7 @@ React (Vite)  ──fetch──►  FastAPI  ──enqueue──►  Redis / RQ 
                              │                         │
                              │                         ├── SEC EDGAR ABS-EE  → PostgreSQL
                              │                         └── SEC EDGAR 10-D/8-K → FAISS
+                             │                         └── SEC EDGAR 10-D Exhibit 99.1 → typed monthly report cache
                              │
                              └── LangGraph agent
                                    ├── deterministic tools  ← PostgreSQL / parsed loans
@@ -173,6 +178,25 @@ React (Vite)  ──fetch──►  FastAPI  ──enqueue──►  Redis / RQ 
    numeric claims aren't backed by tool evidence, or whose factual claims have no source.
    One repair attempt is allowed; if that still fails, the system hands back the raw
    evidence instead of a possibly-wrong narrative.
+
+### Exhibit 99.1 certificate analytics
+
+ABS-EE XML remains the source for loan and property surveillance. A 10-D's Exhibit 99.1 is a
+different source with certificate and deal-level information, including tranche distributions,
+CUSIPs, credit support, and bond/collateral reconciliation. BondLens targets its tables by visible
+title and semantic heading, then parses money values as `Decimal` values rather than asking an LLM
+to read the HTML table.
+
+The system deliberately keeps three balance concepts separate:
+
+- **Scheduled collateral balance** is the value that reconciles to certificate balance through
+  the report's under or over-collateralization figure.
+- **Actual collateral balance** is a servicing measure and can legitimately differ from the
+  scheduled and certificate balances.
+- **Certificate balance** is the total unpaid balance of the issued certificates.
+
+The dashboard and LangGraph tools use these typed values. Every answer links back to the specific
+Exhibit 99.1 source row or reconciliation table.
 
 ## Running it
 

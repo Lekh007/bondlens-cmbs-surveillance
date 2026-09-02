@@ -69,6 +69,34 @@ class DealSummaryResponse(BaseModel):
     source_url: str
 
 
+class CertificateDistributionItem(BaseModel):
+    class_name: str
+    cusip: str
+    pass_through_rate: str | None
+    beginning_balance: str | None
+    principal_distribution: str | None
+    interest_distribution: str | None
+    ending_balance: str | None
+    source_url: str
+
+
+class CertificateDistributionResponse(BaseModel):
+    report_date: str | None
+    source_url: str
+    entries: list[CertificateDistributionItem]
+
+
+class BondCollateralReconciliationResponse(BaseModel):
+    report_date: str | None
+    ending_scheduled_collateral_balance: str | None
+    beginning_actual_collateral_balance: str | None
+    ending_actual_collateral_balance: str | None
+    beginning_certificate_balance: str | None
+    ending_certificate_balance: str | None
+    under_over_collateralization: str | None
+    source_url: str
+
+
 class LoanFieldChangeItem(BaseModel):
     loan_asset_number: str
     field_name: str
@@ -223,6 +251,86 @@ def deal_summary(deal_id: str) -> DealSummaryResponse:
             else None
         ),
         source_url=summary.source.source_url,
+    )
+
+
+@router.get(
+    "/api/bondlens/deals/{deal_id}/certificate-distributions",
+    response_model=CertificateDistributionResponse,
+)
+def certificate_distributions(deal_id: str) -> CertificateDistributionResponse:
+    entry = DEAL_CACHE.get(deal_id)
+    if entry is None or entry.latest_monthly_report is None:
+        raise HTTPException(
+            status_code=404, detail=f"deal {deal_id} has no Exhibit 99.1 report yet"
+        )
+    monthly_report = entry.latest_monthly_report
+    return CertificateDistributionResponse(
+        report_date=monthly_report.report_date.isoformat() if monthly_report.report_date else None,
+        source_url=monthly_report.source.source_url,
+        entries=[
+            CertificateDistributionItem(
+                class_name=item.class_name,
+                cusip=item.cusip,
+                pass_through_rate=str(item.pass_through_rate)
+                if item.pass_through_rate is not None
+                else None,
+                beginning_balance=str(item.beginning_balance)
+                if item.beginning_balance is not None
+                else None,
+                principal_distribution=str(item.principal_distribution)
+                if item.principal_distribution is not None
+                else None,
+                interest_distribution=str(item.interest_distribution)
+                if item.interest_distribution is not None
+                else None,
+                ending_balance=str(item.ending_balance)
+                if item.ending_balance is not None
+                else None,
+                source_url=item.source.source_url,
+            )
+            for item in monthly_report.report.certificate_distributions
+        ],
+    )
+
+
+@router.get(
+    "/api/bondlens/deals/{deal_id}/bond-collateral-reconciliation",
+    response_model=BondCollateralReconciliationResponse,
+)
+def bond_collateral_reconciliation(deal_id: str) -> BondCollateralReconciliationResponse:
+    entry = DEAL_CACHE.get(deal_id)
+    if entry is None or entry.latest_monthly_report is None:
+        raise HTTPException(
+            status_code=404, detail=f"deal {deal_id} has no Exhibit 99.1 report yet"
+        )
+    monthly_report = entry.latest_monthly_report
+    reconciliation = monthly_report.report.reconciliation
+    if reconciliation is None:
+        raise HTTPException(
+            status_code=422, detail="Exhibit 99.1 has no balance reconciliation table"
+        )
+    return BondCollateralReconciliationResponse(
+        report_date=monthly_report.report_date.isoformat() if monthly_report.report_date else None,
+        ending_scheduled_collateral_balance=str(reconciliation.ending_scheduled_collateral_balance)
+        if reconciliation.ending_scheduled_collateral_balance is not None
+        else None,
+        beginning_actual_collateral_balance=str(reconciliation.beginning_actual_collateral_balance)
+        if reconciliation.beginning_actual_collateral_balance is not None
+        else None,
+        ending_actual_collateral_balance=str(reconciliation.ending_actual_collateral_balance)
+        if reconciliation.ending_actual_collateral_balance is not None
+        else None,
+        beginning_certificate_balance=str(reconciliation.beginning_certificate_balance)
+        if reconciliation.beginning_certificate_balance is not None
+        else None,
+        ending_certificate_balance=str(reconciliation.ending_certificate_balance)
+        if reconciliation.ending_certificate_balance is not None
+        else None,
+        under_over_collateralization=str(reconciliation.under_over_collateralization)
+        if reconciliation.under_over_collateralization is not None
+        else None,
+        source_url=reconciliation.source.source_url,
     )
 
 
@@ -392,6 +500,16 @@ def chat(body: ChatRequest, request: Request) -> ChatResponse:
         # completely inert in the running product because the graph was
         # built without it (found by review, 2026-08-29).
         vector_index=entry.vector_index,
+        certificate_distributions=(
+            entry.latest_monthly_report.report.certificate_distributions
+            if entry.latest_monthly_report is not None
+            else ()
+        ),
+        reconciliation=(
+            entry.latest_monthly_report.report.reconciliation
+            if entry.latest_monthly_report is not None
+            else None
+        ),
     )
     result = graph.invoke({"question": body.question}, config={"recursion_limit": 10})
 

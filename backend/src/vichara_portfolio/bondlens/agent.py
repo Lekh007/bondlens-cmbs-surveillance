@@ -41,7 +41,12 @@ from vichara_portfolio.bondlens.analytics import (
     rank_loans_by_status_change,
     rank_properties_by_noi_change,
 )
-from vichara_portfolio.bondlens.domain import Deal, Loan
+from vichara_portfolio.bondlens.domain import (
+    BondCollateralReconciliation,
+    CertificateDistribution,
+    Deal,
+    Loan,
+)
 from vichara_portfolio.model_gateway.ports import ModelProvider
 from vichara_portfolio.shared.provenance import SourceRef
 
@@ -105,6 +110,22 @@ _HISTORY_KEYWORDS = ("history", "over time", "each period", "every period")
 _SUMMARY_KEYWORDS = ("deal summary", "overview", "how many loans", "total balance")
 _PROPERTY_PROFILE_KEYWORDS = ("property profile", "occupancy", "valuation", "square feet")
 _NOI_KEYWORDS = ("noi", "deteriorat", "net operating income")
+_CERTIFICATE_KEYWORDS = (
+    "certificate",
+    "cusip",
+    "tranche",
+    "credit support",
+    "principal distribution",
+    "interest distribution",
+)
+_RECONCILIATION_KEYWORDS = (
+    "collateralization",
+    "certificate balance",
+    "collateral balance",
+    "reconciliation",
+    "under collateral",
+    "over collateral",
+)
 _NARRATIVE_KEYWORDS = (
     "material agreement",
     "8-k",
@@ -120,10 +141,11 @@ _NARRATIVE_KEYWORDS = (
 def plan_node(state: AgentState) -> AgentState:
     question = state["question"].lower()
     planned: list[str] = []
+    asks_for_reconciliation = any(k in question for k in _RECONCILIATION_KEYWORDS)
 
     if any(k in question for k in _STATUS_KEYWORDS):
         planned.append("rank_loans_by_status_change")
-    if any(k in question for k in _BALANCE_KEYWORDS):
+    if any(k in question for k in _BALANCE_KEYWORDS) and not asks_for_reconciliation:
         planned.append("rank_loans_by_balance_drift")
     if any(k in question for k in _HISTORY_KEYWORDS):
         planned.append("get_loan_history")
@@ -133,6 +155,10 @@ def plan_node(state: AgentState) -> AgentState:
         planned.append("get_property_profile")
     if any(k in question for k in _NOI_KEYWORDS):
         planned.append("rank_properties_by_noi_change")
+    if any(k in question for k in _CERTIFICATE_KEYWORDS) and not asks_for_reconciliation:
+        planned.append("get_certificate_distribution")
+    if asks_for_reconciliation:
+        planned.append("get_bond_collateral_reconciliation")
 
     needs_retrieval = any(k in question for k in _NARRATIVE_KEYWORDS)
 
@@ -204,6 +230,8 @@ def make_execute_tools_node(
     loans_a: tuple[Loan, ...] = (),
     loans_b: tuple[Loan, ...] = (),
     filing_source: SourceRef | None = None,
+    certificate_distributions: tuple[CertificateDistribution, ...] = (),
+    reconciliation: BondCollateralReconciliation | None = None,
 ) -> Callable[[AgentState], AgentState]:
     """loans_a/loans_b are the two comparison periods (a=earlier, b=later).
     Tools that need only one period use loans_b (the most recent)."""
@@ -331,6 +359,49 @@ def make_execute_tools_node(
                         )
                         evidence.append(ToolEvidence(tool_name, rendered, (profile.source,)))
 
+            elif tool_name == "get_certificate_distribution":
+                distribution = _find_certificate_distribution(
+                    state["question"], certificate_distributions
+                )
+                if distribution is None:
+                    rendered = (
+                        "no matching certificate class was found in the latest Exhibit 99.1 report"
+                    )
+                    sources = ()
+                else:
+                    rendered = (
+                        f"certificate class {distribution.class_name} "
+                        f"(CUSIP {distribution.cusip}): "
+                        f"beginning balance {_fmt_money(distribution.beginning_balance)}, "
+                        "principal distribution "
+                        f"{_fmt_money(distribution.principal_distribution)}, "
+                        f"interest distribution {_fmt_money(distribution.interest_distribution)}, "
+                        f"ending balance {_fmt_money(distribution.ending_balance)}"
+                    )
+                    sources = (distribution.source,)
+                evidence.append(ToolEvidence(tool_name, rendered, sources))
+
+            elif tool_name == "get_bond_collateral_reconciliation":
+                if reconciliation is None:
+                    rendered = (
+                        "no bond and collateral reconciliation is available in the latest "
+                        "Exhibit 99.1 report"
+                    )
+                    sources = ()
+                else:
+                    rendered = (
+                        f"ending scheduled collateral balance "
+                        f"{_fmt_money(reconciliation.ending_scheduled_collateral_balance)}; "
+                        f"ending actual collateral balance "
+                        f"{_fmt_money(reconciliation.ending_actual_collateral_balance)}; "
+                        f"ending certificate balance "
+                        f"{_fmt_money(reconciliation.ending_certificate_balance)}; "
+                        f"under/over-collateralization (certificate minus scheduled collateral) "
+                        f"{_fmt_money(reconciliation.under_over_collateralization)}"
+                    )
+                    sources = (reconciliation.source,)
+                evidence.append(ToolEvidence(tool_name, rendered, sources))
+
         return {**state, "tool_evidence": evidence}
 
     return execute_tools_node
@@ -346,6 +417,19 @@ def _extract_property_name(question: str, loans: tuple[Loan, ...]) -> str | None
         for prop in loan.properties:
             if prop.property_name and prop.property_name.lower() in question.lower():
                 return prop.property_name
+    return None
+
+
+def _find_certificate_distribution(
+    question: str, distributions: tuple[CertificateDistribution, ...]
+) -> CertificateDistribution | None:
+    normalized_question = question.lower()
+    for distribution in distributions:
+        if (
+            distribution.class_name.lower() in normalized_question
+            or distribution.cusip.lower() in normalized_question
+        ):
+            return distribution
     return None
 
 
@@ -627,6 +711,8 @@ def build_agent_graph(
     loans_b: tuple[Loan, ...] = (),
     filing_source: SourceRef | None = None,
     vector_index: object | None = None,
+    certificate_distributions: tuple[CertificateDistribution, ...] = (),
+    reconciliation: BondCollateralReconciliation | None = None,
 ) -> CompiledStateGraph[AgentState]:
     graph = StateGraph[AgentState](AgentState)
     graph.add_node("plan", plan_node)
@@ -637,7 +723,12 @@ def build_agent_graph(
     graph.add_node(
         "execute_tools",
         make_execute_tools_node(
-            deal=deal, loans_a=loans_a, loans_b=loans_b, filing_source=filing_source
+            deal=deal,
+            loans_a=loans_a,
+            loans_b=loans_b,
+            filing_source=filing_source,
+            certificate_distributions=certificate_distributions,
+            reconciliation=reconciliation,
         ),  # type: ignore[arg-type]
     )
     graph.add_node("retrieve_context", make_retrieve_context_node(vector_index))  # type: ignore[arg-type]

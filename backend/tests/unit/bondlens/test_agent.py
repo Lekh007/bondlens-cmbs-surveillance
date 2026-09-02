@@ -120,6 +120,16 @@ def test_noi_deterioration_question_routes_to_property_noi_tool() -> None:
     assert state["planned_tools"] == ["rank_properties_by_noi_change"]
 
 
+def test_certificate_question_routes_to_the_typed_exhibit_99_1_tool() -> None:
+    state = plan_node({"question": "What was the A-1 principal distribution?"})
+    assert state["planned_tools"] == ["get_certificate_distribution"]
+
+
+def test_reconciliation_question_routes_to_the_typed_exhibit_99_1_tool() -> None:
+    state = plan_node({"question": "Why does certificate balance differ from collateral balance?"})
+    assert state["planned_tools"] == ["get_bond_collateral_reconciliation"]
+
+
 def test_unrecognized_question_plans_no_tools() -> None:
     state = plan_node({"question": "asdkjfh qwoeiru"})
     assert state["planned_tools"] == []

@@ -129,3 +129,57 @@ class DataQualityIssue:
 class ParsedAssetData:
     loans: tuple[Loan, ...]
     issues: tuple[DataQualityIssue, ...]
+
+
+@dataclass(frozen=True)
+class CertificateDistribution:
+    """One certificate class from an Exhibit 99.1 monthly distribution report.
+
+    These are certificate-side figures. They must never be substituted for
+    collateral balances from ABS-EE asset data: the two can differ because of
+    under/over-collateralization or other certificate-level adjustments.
+    """
+
+    class_name: str
+    cusip: str
+    pass_through_rate: Decimal | None
+    original_balance: Decimal | None
+    beginning_balance: Decimal | None
+    principal_distribution: Decimal | None
+    interest_distribution: Decimal | None
+    prepayment_penalties: Decimal | None
+    realized_losses: Decimal | None
+    total_distribution: Decimal | None
+    ending_balance: Decimal | None
+    current_credit_support: Decimal | None
+    original_credit_support: Decimal | None
+    source: SourceRef
+
+
+@dataclass(frozen=True)
+class BondCollateralReconciliation:
+    """Deal-level balance reconciliation from Exhibit 99.1.
+
+    Under/over-collateralization reconciles the scheduled collateral and
+    certificate balances. Actual collateral is a separate servicing measure
+    and can legitimately differ from both, so it must not be used in that
+    equality check.
+    """
+
+    beginning_scheduled_collateral_balance: Decimal | None
+    scheduled_principal_collections: Decimal | None
+    ending_scheduled_collateral_balance: Decimal | None
+    beginning_actual_collateral_balance: Decimal | None
+    ending_actual_collateral_balance: Decimal | None
+    beginning_certificate_balance: Decimal | None
+    principal_distributions: Decimal | None
+    ending_certificate_balance: Decimal | None
+    under_over_collateralization: Decimal | None
+    source: SourceRef
+
+
+@dataclass(frozen=True)
+class ParsedMonthlyReport:
+    certificate_distributions: tuple[CertificateDistribution, ...]
+    reconciliation: BondCollateralReconciliation | None
+    issues: tuple[DataQualityIssue, ...]

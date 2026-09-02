@@ -16,12 +16,16 @@ from sqlalchemy import text
 
 from vichara_portfolio.bondlens.deal_cache import DEAL_CACHE, DealCacheEntry
 from vichara_portfolio.bondlens.domain import (
+    BondCollateralReconciliation,
+    CertificateDistribution,
     Deal,
     Loan,
+    ParsedMonthlyReport,
     PropertyAtSecuritization,
     PropertySnapshot,
     ReportingPeriod,
 )
+from vichara_portfolio.bondlens.monthly_report_ingest import IngestedMonthlyReport
 from vichara_portfolio.main import create_app
 from vichara_portfolio.model_gateway.deterministic import DeterministicProvider
 from vichara_portfolio.model_gateway.ports import GenerateResult, ModelInfo
@@ -104,6 +108,48 @@ def _loan(
         properties=properties,
         raw_fields={},
         source=_source("fixture"),
+    )
+
+
+def _monthly_report() -> IngestedMonthlyReport:
+    source = _source("exhibit-99-1")
+    return IngestedMonthlyReport(
+        accession_number="0002110410-26-000001",
+        report_date=date(2026, 8, 17),
+        source=source,
+        report=ParsedMonthlyReport(
+            certificate_distributions=(
+                CertificateDistribution(
+                    class_name="A-1",
+                    cusip="08164FAA9",
+                    pass_through_rate=Decimal("0.04216170"),
+                    original_balance=Decimal("8602000.00"),
+                    beginning_balance=Decimal("7890836.42"),
+                    principal_distribution=Decimal("166693.42"),
+                    interest_distribution=Decimal("27724.26"),
+                    prepayment_penalties=Decimal("0"),
+                    realized_losses=Decimal("0"),
+                    total_distribution=Decimal("194417.68"),
+                    ending_balance=Decimal("7724143.00"),
+                    current_credit_support=Decimal("0.3004"),
+                    original_credit_support=Decimal("0.30"),
+                    source=source,
+                ),
+            ),
+            reconciliation=BondCollateralReconciliation(
+                beginning_scheduled_collateral_balance=Decimal("728470250.36"),
+                scheduled_principal_collections=Decimal("171451.19"),
+                ending_scheduled_collateral_balance=Decimal("728298799.17"),
+                beginning_actual_collateral_balance=Decimal("728470250.36"),
+                ending_actual_collateral_balance=Decimal("728298800.10"),
+                beginning_certificate_balance=Decimal("728470250.36"),
+                principal_distributions=Decimal("171451.19"),
+                ending_certificate_balance=Decimal("728298799.17"),
+                under_over_collateralization=Decimal("-0.93"),
+                source=source,
+            ),
+            issues=(),
+        ),
     )
 
 
@@ -275,6 +321,53 @@ def test_deal_summary_returns_computed_totals() -> None:
     body = response.json()
     assert body["loan_count"] == 1
     assert body["total_actual_balance_amount"] == "900000.00"
+
+
+def test_certificate_distribution_returns_typed_exhibit_99_1_data() -> None:
+    DEAL_CACHE["0002110410"] = DealCacheEntry(
+        deal=Deal(cik="0002110410", name="Benchmark 2026-B42 Mortgage Trust"),
+        loans_a=(),
+        loans_b=(),
+        filing_source=None,
+        latest_monthly_report=_monthly_report(),
+    )
+
+    response = _client().get("/api/bondlens/deals/0002110410/certificate-distributions")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["report_date"] == "2026-08-17"
+    assert body["entries"] == [
+        {
+            "class_name": "A-1",
+            "cusip": "08164FAA9",
+            "pass_through_rate": "0.04216170",
+            "beginning_balance": "7890836.42",
+            "principal_distribution": "166693.42",
+            "interest_distribution": "27724.26",
+            "ending_balance": "7724143.00",
+            "source_url": "https://www.sec.gov/x/exhibit-99-1.xml",
+        }
+    ]
+
+
+def test_bond_collateral_reconciliation_returns_nonzero_difference() -> None:
+    DEAL_CACHE["0002110410"] = DealCacheEntry(
+        deal=Deal(cik="0002110410", name="Benchmark 2026-B42 Mortgage Trust"),
+        loans_a=(),
+        loans_b=(),
+        filing_source=None,
+        latest_monthly_report=_monthly_report(),
+    )
+
+    response = _client().get("/api/bondlens/deals/0002110410/bond-collateral-reconciliation")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ending_scheduled_collateral_balance"] == "728298799.17"
+    assert body["ending_actual_collateral_balance"] == "728298800.10"
+    assert body["ending_certificate_balance"] == "728298799.17"
+    assert body["under_over_collateralization"] == "-0.93"
 
 
 def test_deal_compare_with_only_one_period_returns_422() -> None:

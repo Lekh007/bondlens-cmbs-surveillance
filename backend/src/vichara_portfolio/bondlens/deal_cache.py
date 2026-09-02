@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from vichara_portfolio.bondlens.domain import Deal, Loan
+from vichara_portfolio.bondlens.monthly_report_ingest import IngestedMonthlyReport
 from vichara_portfolio.shared.provenance import SourceRef
 
 
@@ -31,6 +32,10 @@ class DealCacheEntry:
     # path that touches the cache. None means narrative ingestion was
     # skipped or failed; the agent degrades to deterministic tools only.
     vector_index: object | None = None
+    # Latest typed Exhibit 99.1 certificate report. This is intentionally
+    # separate from ABS-EE loans because certificate and collateral balances
+    # are different financial concepts and can reconcile with a non-zero gap.
+    latest_monthly_report: IngestedMonthlyReport | None = None
 
 
 DEAL_CACHE: dict[str, DealCacheEntry] = {}

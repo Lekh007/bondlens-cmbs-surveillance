@@ -5,6 +5,7 @@
 
 # ---- local data, models, caches (never committed) ------------------------
 .data/
+backend/data/
 .models/
 .cache/
 !backend/tests/fixtures/**

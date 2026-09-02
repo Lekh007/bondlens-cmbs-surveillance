@@ -19,6 +19,7 @@ from vichara_portfolio.bondlens.adapters.repository import BondLensRepository
 from vichara_portfolio.bondlens.adapters.sec_edgar import SecEdgarClient
 from vichara_portfolio.bondlens.deal_cache import DEAL_CACHE, DealCacheEntry
 from vichara_portfolio.bondlens.domain import Deal
+from vichara_portfolio.bondlens.monthly_report_ingest import ingest_monthly_reports
 from vichara_portfolio.bondlens.service import BondLensService
 from vichara_portfolio.settings import Settings
 from vichara_portfolio.shared.db import make_engine, make_session_factory, session_scope
@@ -54,6 +55,8 @@ def run_ingestion_job(cik: str) -> dict[str, object]:
     loans_b = successful[-1].loans if successful else ()
 
     narrative = _ingest_narrative_corpus(cik, sec=sec, filing_store=filing_store)
+    monthly_reports = ingest_monthly_reports(cik=cik, sec=sec, filing_store=filing_store)
+    latest_monthly_report = monthly_reports.reports[-1] if monthly_reports.reports else None
 
     DEAL_CACHE[cik] = DealCacheEntry(
         deal=Deal(cik=cik, name=summary.deal_name),
@@ -61,6 +64,7 @@ def run_ingestion_job(cik: str) -> dict[str, object]:
         loans_b=loans_b,
         filing_source=loans_b[0].source if loans_b else None,
         vector_index=narrative.index,
+        latest_monthly_report=latest_monthly_report,
     )
 
     return {
@@ -73,6 +77,9 @@ def run_ingestion_job(cik: str) -> dict[str, object]:
         "narrative_filings_indexed": narrative.filings_indexed,
         "narrative_chunks_indexed": narrative.chunks_indexed,
         "narrative_error": narrative.error,
+        "monthly_reports_ingested": len(monthly_reports.reports),
+        "monthly_reports_skipped": len(monthly_reports.skipped),
+        "monthly_reports_failed": len(monthly_reports.failed),
     }
 
 

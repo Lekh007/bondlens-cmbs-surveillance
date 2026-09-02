@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '@/api/client'
 import {
   getBalanceDrift,
+  getBondCollateralReconciliation,
+  getCertificateDistributions,
   getDealCompare,
   getDealSummary,
   getGeography,
@@ -28,6 +30,24 @@ export function useDealSummary(dealId: string | null) {
   return useQuery({
     queryKey: ['bondlens', 'deal', dealId, 'summary'],
     queryFn: () => getDealSummary(dealId!),
+    enabled: dealId != null,
+    retry: (failureCount, error) => !isExpectedDealState(error) && failureCount < 1,
+  })
+}
+
+export function useCertificateDistributions(dealId: string | null) {
+  return useQuery({
+    queryKey: ['bondlens', 'deal', dealId, 'certificate-distributions'],
+    queryFn: () => getCertificateDistributions(dealId!),
+    enabled: dealId != null,
+    retry: (failureCount, error) => !isExpectedDealState(error) && failureCount < 1,
+  })
+}
+
+export function useBondCollateralReconciliation(dealId: string | null) {
+  return useQuery({
+    queryKey: ['bondlens', 'deal', dealId, 'bond-collateral-reconciliation'],
+    queryFn: () => getBondCollateralReconciliation(dealId!),
     enabled: dealId != null,
     retry: (failureCount, error) => !isExpectedDealState(error) && failureCount < 1,
   })

@@ -14,12 +14,15 @@ import { FocusDelinquency } from '@/features/bondlens/components/sections/FocusD
 import { PropertyTypeDistribution } from '@/features/bondlens/components/sections/PropertyTypeDistribution'
 import { Geography } from '@/features/bondlens/components/sections/Geography'
 import { BalanceMaturityLosses } from '@/features/bondlens/components/sections/BalanceMaturityLosses'
+import { CertificateAnalytics } from '@/features/bondlens/components/sections/CertificateAnalytics'
 
 import { ChatLauncher } from '@/features/bondlens/components/chat/ChatLauncher'
 import { ChatPanel } from '@/features/bondlens/components/chat/ChatPanel'
 
 import {
   useBalanceDrift,
+  useBondCollateralReconciliation,
+  useCertificateDistributions,
   useDealCompare,
   useDealSummary,
   useGeography,
@@ -62,6 +65,8 @@ export function BondLensPage() {
   const propertyTypesQuery = usePropertyTypes(selectedDealId)
   const statusChangesQuery = useStatusChanges(selectedDealId)
   const balanceDriftQuery = useBalanceDrift(selectedDealId)
+  const certificateDistributionsQuery = useCertificateDistributions(selectedDealId)
+  const reconciliationQuery = useBondCollateralReconciliation(selectedDealId)
 
   const dealName = summaryQuery.data?.name ?? ''
 
@@ -102,11 +107,16 @@ export function BondLensPage() {
                   {summaryQuery.data.name}
                 </h1>
                 <div className="text-[13px] text-text-md mt-0.5">
-                  CIK {summaryQuery.data.cik} · loan-level CMBS ABS-EE surveillance
+                  CIK {summaryQuery.data.cik} · loan, collateral, and certificate surveillance
                 </div>
               </div>
 
               <KpiHero summary={summaryQuery.data} />
+
+              <CertificateAnalytics
+                distributions={certificateDistributionsQuery.data ?? null}
+                reconciliation={reconciliationQuery.data ?? null}
+              />
 
               <PeriodComparison compare={compareQuery.data ?? null} isLoading={compareQuery.isPending} />
 
