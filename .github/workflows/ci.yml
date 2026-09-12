@@ -10,11 +10,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  # The whole backend suite is designed to run with no network, no database,
-  # no Redis and no GPU. The deterministic provider is what makes that true
-  # for the agent tests -- see backend/src/vichara_portfolio/model_gateway.
-  MODEL_PROVIDER: deterministic
+# No env overrides on purpose. tests/conftest.py already pins
+# MODEL_PROVIDER=deterministic for the whole session, and pyproject's addopts
+# deselect the `live` marker -- so the suite needs no network, database, Redis
+# or GPU. Setting these here would risk a CI value masking a class default that
+# is itself under test.
 
 jobs:
   backend:
