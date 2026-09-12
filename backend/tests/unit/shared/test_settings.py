@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pydantic
 import pytest
 
@@ -21,9 +23,17 @@ def test_large_paths_resolve_under_repo_root() -> None:
         assert path.is_relative_to(REPO_ROOT), f"{path} must resolve under {REPO_ROOT}"
 
 
-def test_path_outside_repo_root_is_rejected() -> None:
+def test_path_outside_repo_root_is_rejected(tmp_path: Path) -> None:
+    # Must be an *absolute* path outside the repo on every platform. A literal
+    # like "C:/Windows/Temp/..." is absolute only on Windows; on POSIX it is a
+    # relative path that resolves under the repo root, so the validator is right
+    # not to reject it and the assertion below would fail for the wrong reason.
+    outside = tmp_path / "vichara-raw"
+    assert not outside.resolve().is_relative_to(REPO_ROOT), (
+        f"precondition: {outside} must sit outside {REPO_ROOT} for this test to mean anything"
+    )
     with pytest.raises(pydantic.ValidationError):
-        _settings(raw_root="C:/Windows/Temp/vichara-raw")
+        _settings(raw_root=str(outside))
 
 
 def test_sec_user_agent_is_required_but_not_secret(monkeypatch: pytest.MonkeyPatch) -> None:
